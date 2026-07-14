@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ppc-optimizer"
+version = "0.1.0"
+description = "Google Ads product report analysis and Excel reporting."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "loguru>=0.7,<1.0",
+    "openpyxl>=3.1,<4.0",
+    "pandas>=2.2,<3.0",
+    "pydantic>=2.8,<3.0",
+    "typer>=0.12,<1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<9.0"]
+
+[project.scripts]
+ppc-optimizer = "app.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
