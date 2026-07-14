@@ -70,5 +70,6 @@ python main.py path\to\product_report.csv
 
 `GoogleAdsProductReportLoader` accepts CSV and XLSX product reports, detects
 the format from the file extension, and returns a pandas `DataFrame` with
-normalized `snake_case` column names. Analysis behavior is intentionally not
-implemented yet.
+canonical internal column names. It recognizes the supported Google Ads Product
+export headers in English and Ukrainian and reports missing required metrics
+before analysis begins.
