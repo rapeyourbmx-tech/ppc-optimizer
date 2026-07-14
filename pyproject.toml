@@ -28,4 +28,4 @@ pythonpath = ["."]
 addopts = "-ra"
 
 [tool.setuptools.packages.find]
-include = ["app*"]
+include = ["app*", "examples*", "reports*"]

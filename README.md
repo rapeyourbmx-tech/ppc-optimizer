@@ -3,9 +3,9 @@
 PPC Optimizer will analyze Google Ads product reports and produce a structured
 Excel workbook named `report.xlsx`.
 
-This repository currently contains the initial application architecture only.
-Business rules, source parsing, analysis, and workbook generation are not yet
-implemented.
+This repository currently contains the initial application architecture and
+the input report loading boundary. Business rules, performance analysis, and
+workbook generation are not yet implemented.
 
 ## Requirements
 
@@ -26,12 +26,16 @@ python -m pip install -r requirements.txt
 ├── app/
 │   ├── cli.py                 # Command-line interface boundary
 │   ├── config.py              # Application configuration models
+│   ├── loaders/               # Input report loaders
+│   ├── analyzers/             # Future performance analysis components
 │   ├── core/                  # Shared constants and infrastructure helpers
 │   ├── models/                # Typed domain and request models
 │   ├── repositories/          # Source data access contracts
 │   ├── services/              # Analysis and orchestration contracts
 │   └── reporting/             # Excel workbook export contracts
 ├── data/                      # Local input data (not committed)
+├── examples/                  # Usage examples
+├── reports/                   # Report-facing package boundary
 ├── templates/                 # Workbook templates
 ├── tests/                     # Automated tests
 └── main.py                    # Application entry point
@@ -55,3 +59,10 @@ python -m pip install -r requirements.txt
 ```powershell
 pytest
 ```
+
+## Input reports
+
+`GoogleAdsProductReportLoader` accepts CSV and XLSX product reports, detects
+the format from the file extension, and returns a pandas `DataFrame` with
+normalized `snake_case` column names. Analysis behavior is intentionally not
+implemented yet.
