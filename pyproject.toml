@@ -20,12 +20,15 @@ dependencies = [
 dev = ["pytest>=8.0,<9.0"]
 
 [project.scripts]
-ppc-optimizer = "app.cli:app"
+ppc-optimizer = "main:cli"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-ra"
+
+[tool.setuptools]
+py-modules = ["main"]
 
 [tool.setuptools.packages.find]
 include = ["app*", "examples*", "reports*"]

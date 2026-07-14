@@ -3,9 +3,9 @@
 PPC Optimizer will analyze Google Ads product reports and produce a structured
 Excel workbook named `report.xlsx`.
 
-This repository currently contains the initial application architecture and
-the input report loading boundary. Business rules, performance analysis, and
-workbook generation are not yet implemented.
+This repository loads CSV/XLSX Google Ads product reports, produces product
+decisions, campaign recommendations, and audit findings. Excel workbook
+generation is not implemented yet.
 
 ## Requirements
 
@@ -58,6 +58,12 @@ python -m pip install -r requirements.txt
 
 ```powershell
 pytest
+```
+
+Run the current console pipeline with a report file:
+
+```powershell
+python main.py path\to\product_report.csv
 ```
 
 ## Input reports

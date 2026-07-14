@@ -5,21 +5,21 @@ import pandas as pd
 from app.models.audit_report import AuditReport
 from app.models.campaign_summary import CampaignSummary
 from app.models.product_decision import ProductDecision
-
-
-class AuditInputError(ValueError):
-    """Raised when a product report lacks metrics required for auditing."""
+from app.utils.report_columns import (
+    CLICK_COLUMNS,
+    CONVERSION_COLUMNS,
+    CONVERSION_VALUE_COLUMNS,
+    COST_COLUMNS,
+    IMPRESSION_COLUMNS,
+    SKU_COLUMNS,
+    numeric_values,
+    resolve_column,
+)
 
 
 class AuditEngine:
     """Analyze all report products and produce practical recommendations."""
 
-    _SKU_COLUMNS: tuple[str, ...] = ("sku", "item_id", "product_id", "id")
-    _IMPRESSION_COLUMNS: tuple[str, ...] = ("impressions",)
-    _CLICK_COLUMNS: tuple[str, ...] = ("clicks",)
-    _COST_COLUMNS: tuple[str, ...] = ("cost",)
-    _CONVERSION_COLUMNS: tuple[str, ...] = ("conversions",)
-    _REVENUE_COLUMNS: tuple[str, ...] = ("conversion_value", "conversion_value_value")
     _PROFITABLE_ROAS_THRESHOLD: float = 500.0
     _HIGH_ROAS_THRESHOLD: float = 1200.0
     _LOW_CTR_THRESHOLD: float = 1.0
@@ -30,31 +30,31 @@ class AuditEngine:
         The DataFrame is expected to use the normalized column names produced
         by the report loader. Product lists in the result contain SKU strings.
         """
-        sku_column = self._resolve_column(products, self._SKU_COLUMNS, "SKU")
-        impression_column = self._resolve_column(
+        sku_column = resolve_column(products, SKU_COLUMNS, "SKU")
+        impression_column = resolve_column(
             products,
-            self._IMPRESSION_COLUMNS,
+            IMPRESSION_COLUMNS,
             "impressions",
         )
-        click_column = self._resolve_column(products, self._CLICK_COLUMNS, "clicks")
-        cost_column = self._resolve_column(products, self._COST_COLUMNS, "cost")
-        conversion_column = self._resolve_column(
+        click_column = resolve_column(products, CLICK_COLUMNS, "clicks")
+        cost_column = resolve_column(products, COST_COLUMNS, "cost")
+        conversion_column = resolve_column(
             products,
-            self._CONVERSION_COLUMNS,
+            CONVERSION_COLUMNS,
             "conversions",
         )
-        revenue_column = self._resolve_column(
+        revenue_column = resolve_column(
             products,
-            self._REVENUE_COLUMNS,
+            CONVERSION_VALUE_COLUMNS,
             "conversion value",
         )
 
         sku = products[sku_column].fillna("").astype(str)
-        impressions = self._numeric(products[impression_column])
-        clicks = self._numeric(products[click_column])
-        cost = self._numeric(products[cost_column])
-        conversions = self._numeric(products[conversion_column])
-        revenue = self._numeric(products[revenue_column])
+        impressions = numeric_values(products[impression_column])
+        clicks = numeric_values(products[click_column])
+        cost = numeric_values(products[cost_column])
+        conversions = numeric_values(products[conversion_column])
+        revenue = numeric_values(products[revenue_column])
 
         ctr = clicks.divide(impressions.where(impressions != 0)).multiply(100).fillna(0.0)
         roas = revenue.divide(cost.where(cost != 0)).multiply(100).fillna(0.0)
@@ -112,25 +112,6 @@ class AuditEngine:
                 potential_scaling=potential_scaling,
             ),
         )
-
-    @staticmethod
-    def _resolve_column(
-        products: pd.DataFrame,
-        candidates: tuple[str, ...],
-        metric_name: str,
-    ) -> str:
-        """Return the first supported column name for an audit metric."""
-        for column_name in candidates:
-            if column_name in products.columns:
-                return column_name
-
-        message = f"The product report is missing a {metric_name} column."
-        raise AuditInputError(message)
-
-    @staticmethod
-    def _numeric(values: pd.Series) -> pd.Series:
-        """Convert a report metric to numeric values and replace blanks with zero."""
-        return pd.to_numeric(values, errors="coerce").fillna(0.0)
 
     @staticmethod
     def _sku_list(sku: pd.Series, condition: pd.Series) -> list[str]:
