@@ -5,6 +5,8 @@ from typing import Annotated
 
 import typer
 
+from app.analyzers.product_analyzer import ProductAnalyzer
+from app.config import ConfigurationError, load_thresholds
 from app.models.product_decision import ProductDecision
 from app.services.application_pipeline import ApplicationPipeline, PipelineResult
 
@@ -16,11 +18,11 @@ def run(
     pipeline: ApplicationPipeline | None = None,
     *,
     explain: bool = False,
+    config_path: Path | None = None,
 ) -> int:
     """Run the product-report pipeline and print a concise console summary."""
-    active_pipeline = pipeline or ApplicationPipeline()
-
     try:
+        active_pipeline = pipeline or _build_pipeline(config_path)
         result = active_pipeline.run(file_path)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
@@ -44,9 +46,16 @@ def main(
         bool,
         typer.Option("--explain", help="Print a metric-based explanation for every decision."),
     ] = False,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            help="Path to a YAML or JSON thresholds file (default: config.yaml).",
+        ),
+    ] = None,
 ) -> None:
     """Accept a report path and exit with the pipeline status code."""
-    exit_code = run(file_path, explain=explain)
+    exit_code = run(file_path, explain=explain, config_path=config_path)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
 
@@ -54,6 +63,16 @@ def main(
 def cli() -> None:
     """Run the Typer command-line interface."""
     typer.run(main)
+
+
+def _build_pipeline(config_path: Path | None) -> ApplicationPipeline:
+    """Build the pipeline with thresholds from the configuration file.
+
+    Raises:
+        ConfigurationError: If the configuration file cannot be used.
+    """
+    thresholds = load_thresholds(config_path)
+    return ApplicationPipeline(product_analyzer=ProductAnalyzer(thresholds=thresholds))
 
 
 def _console_summary(result: PipelineResult) -> str:

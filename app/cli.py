@@ -20,8 +20,15 @@ def analyze(
         bool,
         typer.Option("--explain", help="Print a metric-based explanation for every decision."),
     ] = False,
+    config_path: Annotated[
+        Path | None,
+        typer.Option(
+            "--config",
+            help="Path to a YAML or JSON thresholds file (default: config.yaml).",
+        ),
+    ] = None,
 ) -> None:
     """Analyze one CSV or XLSX Google Ads product report."""
-    exit_code = run(file_path, explain=explain)
+    exit_code = run(file_path, explain=explain, config_path=config_path)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)

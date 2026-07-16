@@ -66,6 +66,22 @@ Run the current console pipeline with a report file:
 python main.py path\to\product_report.csv
 ```
 
+## Configuration
+
+Decision thresholds live in `config.yaml` in the project root and can be
+edited without touching the code. A custom YAML or JSON file can be passed
+with `--config`:
+
+```powershell
+python main.py data\product_report.csv --config my_thresholds.yaml
+```
+
+Rules are checked in order: watch (`max_cost`), pause (`min_cost`,
+`max_conversions`), scale (`min_roas` in percent, `min_conversion_value`),
+keep (`min_conversions`). Products that match no rule stay on the watch
+list. When no configuration file is present, built-in defaults matching
+`config.yaml` are used.
+
 ## Input reports
 
 `GoogleAdsProductReportLoader` accepts CSV and XLSX product reports, detects

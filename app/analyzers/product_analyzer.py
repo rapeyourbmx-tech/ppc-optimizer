@@ -1,18 +1,20 @@
 """Product-level advertising performance analysis."""
 
 from app.analyzers.decision_explainer import DecisionExplainer
+from app.config import DecisionThresholds
 from app.models.product_decision import ProductDecision, ProductStatus
 
 
 class ProductAnalyzer:
-    """Classify a product according to its advertising performance."""
+    """Classify a product according to configurable performance thresholds."""
 
-    _LOW_COST_THRESHOLD: float = 100.0
-    _KEEP_ROAS_THRESHOLD: float = 500.0
-    _SCALE_ROAS_THRESHOLD: float = 1200.0
-
-    def __init__(self, explainer: DecisionExplainer | None = None) -> None:
-        """Initialize the analyzer with a decision explainer."""
+    def __init__(
+        self,
+        thresholds: DecisionThresholds | None = None,
+        explainer: DecisionExplainer | None = None,
+    ) -> None:
+        """Initialize the analyzer with decision thresholds and an explainer."""
+        self._thresholds = thresholds or DecisionThresholds()
         self._explainer = explainer or DecisionExplainer()
 
     def analyze(
@@ -64,17 +66,25 @@ class ProductAnalyzer:
         roas: float,
     ) -> tuple[ProductStatus, str, str]:
         """Select the status, reason, and explanation for one product's metrics."""
-        if cost < self._LOW_COST_THRESHOLD:
+        watch = self._thresholds.watch
+        pause = self._thresholds.pause
+        scale = self._thresholds.scale
+        keep = self._thresholds.keep
+
+        if cost < watch.max_cost:
             return (
                 ProductStatus.WATCH,
-                "Cost is below the 100 threshold.",
+                f"Cost is below the {watch.max_cost:g} watch threshold.",
                 self._explainer.insufficient_data(),
             )
 
-        if conversions == 0:
+        if cost >= pause.min_cost and conversions <= pause.max_conversions:
             return (
                 ProductStatus.PAUSE,
-                "No conversions at or above the 100 cost threshold.",
+                (
+                    f"Cost of at least {pause.min_cost:g} with no more than "
+                    f"{pause.max_conversions:g} conversions."
+                ),
                 self._explainer.spend_without_conversions(
                     cost=cost,
                     clicks=clicks,
@@ -89,18 +99,25 @@ class ProductAnalyzer:
             conversions=conversions,
         )
 
-        if roas > self._SCALE_ROAS_THRESHOLD:
-            return ProductStatus.SCALE, "ROAS is above 1200%.", performance_explanation
+        if roas >= scale.min_roas and conversion_value >= scale.min_conversion_value:
+            return (
+                ProductStatus.SCALE,
+                (
+                    f"ROAS of at least {scale.min_roas:g}% with conversion value "
+                    f"of at least {scale.min_conversion_value:g}."
+                ),
+                performance_explanation,
+            )
 
-        if roas >= self._KEEP_ROAS_THRESHOLD:
+        if conversions >= keep.min_conversions:
             return (
                 ProductStatus.KEEP,
-                "ROAS is between 500% and 1200%.",
+                f"At least {keep.min_conversions:g} conversions.",
                 performance_explanation,
             )
 
         return (
             ProductStatus.WATCH,
-            "ROAS is below 500% with conversions.",
+            "Performance is below the scale and keep thresholds.",
             performance_explanation,
         )

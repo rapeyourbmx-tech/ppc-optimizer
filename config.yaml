@@ -1,0 +1,21 @@
+# Decision thresholds for PPC Optimizer.
+# Edit the values and rerun the analysis; no code changes are required.
+# Rules are checked in this order: watch -> pause -> scale -> keep.
+
+# WATCH: not enough spend to judge the product yet.
+watch:
+  max_cost: 300        # products with cost below this are watched (currency units)
+
+# PAUSE: material spend without conversions.
+pause:
+  min_cost: 300        # minimum cost to consider pausing (currency units)
+  max_conversions: 0   # pause only when conversions are at or below this value
+
+# SCALE: strong, proven performance.
+scale:
+  min_roas: 10               # ROAS threshold in PERCENT (10 = 0.1x return; 1000 = 10x return)
+  min_conversion_value: 5000 # minimum revenue from conversions (currency units)
+
+# KEEP: converting products that are not yet scale candidates.
+keep:
+  min_conversions: 2   # minimum number of conversions to keep the product running
