@@ -56,3 +56,38 @@ def test_run_returns_input_error_for_missing_file(
     assert exit_code == 2
     assert captured.out == ""
     assert captured.err.startswith("Error:")
+
+
+def test_run_with_explain_prints_decision_blocks(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """The --explain mode prints one formatted explanation block per product."""
+    source_path = tmp_path / "product_report.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item ID": "PAUSE-1",
+                "Impressions": 1000,
+                "Clicks": 104,
+                "Cost": 450.0,
+                "Conversions": 0.0,
+                "Conversion Value": 0.0,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+
+    exit_code = run(source_path, explain=True)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert captured.out.endswith(
+        "SKU: PAUSE-1\n"
+        "Decision: PAUSE\n"
+        "Reason:\n"
+        "Cost = 450\n"
+        "Clicks = 104\n"
+        "Conversions = 0\n"
+        + "-" * 32
+        + "\n"
+    )

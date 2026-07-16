@@ -5,10 +5,18 @@ from typing import Annotated
 
 import typer
 
+from app.models.product_decision import ProductDecision
 from app.services.application_pipeline import ApplicationPipeline, PipelineResult
 
+_EXPLANATION_SEPARATOR = "-" * 32
 
-def run(file_path: Path, pipeline: ApplicationPipeline | None = None) -> int:
+
+def run(
+    file_path: Path,
+    pipeline: ApplicationPipeline | None = None,
+    *,
+    explain: bool = False,
+) -> int:
     """Run the product-report pipeline and print a concise console summary."""
     active_pipeline = pipeline or ApplicationPipeline()
 
@@ -22,6 +30,8 @@ def run(file_path: Path, pipeline: ApplicationPipeline | None = None) -> int:
         return 1
 
     typer.echo(_console_summary(result))
+    if explain:
+        typer.echo(_decision_explanations(result.decisions))
     return 0
 
 
@@ -30,9 +40,13 @@ def main(
         Path,
         typer.Argument(help="Path to a CSV or XLSX Google Ads product report."),
     ],
+    explain: Annotated[
+        bool,
+        typer.Option("--explain", help="Print a metric-based explanation for every decision."),
+    ] = False,
 ) -> None:
     """Accept a report path and exit with the pipeline status code."""
-    exit_code = run(file_path)
+    exit_code = run(file_path, explain=explain)
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
 
@@ -50,6 +64,20 @@ def _console_summary(result: PipelineResult) -> str:
         f"Health: {health} | Products: {summary.total_products} | Keep: {summary.keep} | "
         f"Watch: {summary.watch} | Pause: {summary.pause} | Scale: {summary.scale}"
     )
+
+
+def _decision_explanations(decisions: list[ProductDecision]) -> str:
+    """Format one explanation block per product decision."""
+    blocks = [
+        (
+            f"SKU: {decision.sku}\n"
+            f"Decision: {decision.status}\n"
+            f"Reason:\n{decision.explanation}\n"
+            f"{_EXPLANATION_SEPARATOR}"
+        )
+        for decision in decisions
+    ]
+    return "\n".join(blocks)
 
 
 if __name__ == "__main__":

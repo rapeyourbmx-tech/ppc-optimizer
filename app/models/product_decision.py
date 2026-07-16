@@ -25,6 +25,7 @@ class ProductDecision:
     roas: float
     status: ProductStatus
     reason: str
+    explanation: str = ""
 
     def __post_init__(self) -> None:
         """Reject values outside the supported product statuses."""

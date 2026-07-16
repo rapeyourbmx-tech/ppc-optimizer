@@ -37,8 +37,22 @@ class GoogleAdsProductReportMapper:
     """Map English and Ukrainian Google Ads export headers to one schema."""
 
     _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
-        "product_id": ("product_id", "item_id", "ідентифікатор_товару", "ід_товару"),
-        "product": ("product", "item_title", "product_title", "товар", "назва_товару"),
+        "product_id": (
+            "product_id",
+            "item_id",
+            "ідентифікатор_товару",
+            "ід_товару",
+            "ідентифікатор_елемента",
+        ),
+        "product": (
+            "product",
+            "item_title",
+            "product_title",
+            "title",
+            "товар",
+            "назва_товару",
+            "назва",
+        ),
         "clicks": ("clicks", "кліки"),
         "impressions": ("impressions", "покази"),
         "ctr": ("ctr",),
