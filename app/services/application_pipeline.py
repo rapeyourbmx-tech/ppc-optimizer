@@ -27,6 +27,7 @@ from app.utils.report_columns import (
 class PipelineResult:
     """Plain-Python result of one complete product-report processing run."""
 
+    products: pd.DataFrame
     decisions: list[ProductDecision]
     campaign_summary: CampaignSummary
     audit_report: AuditReport
@@ -56,6 +57,7 @@ class ApplicationPipeline:
         audit_report = self._audit_engine.audit(products, campaign_summary)
 
         return PipelineResult(
+            products=products,
             decisions=decisions,
             campaign_summary=campaign_summary,
             audit_report=audit_report,

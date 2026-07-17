@@ -35,14 +35,16 @@ def test_run_processes_csv_and_prints_summary(
         ]
     ).to_csv(source_path, index=False)
 
-    exit_code = run(source_path)
+    exit_code = run(source_path, output_path=tmp_path / "report.xlsx")
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert captured.err == ""
-    assert captured.out == (
+    assert captured.out.startswith(
         "Health: Needs attention | Products: 2 | Keep: 1 | Watch: 0 | Pause: 1 | Scale: 0\n"
     )
+    assert "Report saved:" in captured.out
+    assert (tmp_path / "report.xlsx").is_file()
 
 
 def test_run_returns_input_error_for_missing_file(
@@ -77,7 +79,7 @@ def test_run_with_explain_prints_decision_blocks(
         ]
     ).to_csv(source_path, index=False)
 
-    exit_code = run(source_path, explain=True)
+    exit_code = run(source_path, explain=True, output_path=tmp_path / "report.xlsx")
 
     captured = capsys.readouterr()
     assert exit_code == 0
@@ -114,9 +116,9 @@ def test_run_applies_custom_threshold_configuration(
     config_path = tmp_path / "strict.yaml"
     config_path.write_text("watch:\n  max_cost: 10\npause:\n  min_cost: 10\n", encoding="utf-8")
 
-    default_exit_code = run(source_path)
+    default_exit_code = run(source_path, output_path=tmp_path / "report.xlsx")
     default_output = capsys.readouterr().out
-    strict_exit_code = run(source_path, config_path=config_path)
+    strict_exit_code = run(source_path, config_path=config_path, output_path=tmp_path / "report.xlsx")
     strict_output = capsys.readouterr().out
 
     assert default_exit_code == 0

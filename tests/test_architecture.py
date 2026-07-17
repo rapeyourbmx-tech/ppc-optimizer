@@ -11,4 +11,4 @@ def test_cli_application_is_defined() -> None:
 
 def test_required_workbook_sheets_are_declared() -> None:
     """The workbook structure includes every required sheet."""
-    assert len(WorkbookSheet) == 10
+    assert len(WorkbookSheet) == 9

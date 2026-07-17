@@ -4,8 +4,8 @@ PPC Optimizer will analyze Google Ads product reports and produce a structured
 Excel workbook named `report.xlsx`.
 
 This repository loads CSV/XLSX Google Ads product reports, produces product
-decisions, campaign recommendations, and audit findings. Excel workbook
-generation is not implemented yet.
+decisions, campaign recommendations, and audit findings, and exports a
+formatted `report.xlsx` workbook.
 
 ## Requirements
 
@@ -41,18 +41,17 @@ python -m pip install -r requirements.txt
 └── main.py                    # Application entry point
 ```
 
-## Planned workbook sheets
+## Workbook sheets
 
-- Dashboard
-- SKU Manager
-- High
-- Average
-- Low
-- Brands
-- Categories
-- Watchlist
-- Top Winners
-- Top Losers
+- Dashboard — formula-backed KPI cards
+- Executive Summary — key metrics and recommended actions
+- Products — every source column plus Status, ROAS, Recommendation, Reason
+- KEEP / WATCH / PAUSE / SCALE — one sheet per decision
+- Top Winners — highest-ROAS products with revenue
+- Top Losers — largest spend with zero conversions
+
+Brands and Categories sheets are planned for a future release. Use
+`--output` to change the workbook path (default: `report.xlsx`).
 
 ## Development
 

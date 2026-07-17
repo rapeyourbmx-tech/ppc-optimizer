@@ -27,8 +27,17 @@ def analyze(
             help="Path to a YAML or JSON thresholds file (default: config.yaml).",
         ),
     ] = None,
+    output_path: Annotated[
+        Path,
+        typer.Option("--output", help="Path of the generated Excel workbook."),
+    ] = Path("report.xlsx"),
 ) -> None:
     """Analyze one CSV or XLSX Google Ads product report."""
-    exit_code = run(file_path, explain=explain, config_path=config_path)
+    exit_code = run(
+        file_path,
+        explain=explain,
+        config_path=config_path,
+        output_path=output_path,
+    )
     if exit_code != 0:
         raise typer.Exit(code=exit_code)

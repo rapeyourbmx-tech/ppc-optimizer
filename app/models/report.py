@@ -1,9 +1,22 @@
-"""Domain model placeholders for Google Ads product reports."""
+"""Domain model for a fully analyzed Google Ads product report."""
 
-from pydantic import BaseModel
+from dataclasses import dataclass
+
+import pandas as pd
+
+from app.models.audit_report import AuditReport
+from app.models.campaign_summary import CampaignSummary
+from app.models.product_decision import ProductDecision
 
 
-class ProductReport(BaseModel):
-    """Future normalized representation of a Google Ads product report."""
+@dataclass(frozen=True, slots=True)
+class ProductReport:
+    """Everything required to export one analyzed product report.
 
-    pass
+    The decisions list is aligned row-by-row with the products data frame.
+    """
+
+    products: pd.DataFrame
+    decisions: list[ProductDecision]
+    campaign_summary: CampaignSummary
+    audit_report: AuditReport
