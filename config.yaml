@@ -38,3 +38,12 @@ campaigns:
     pause_spend: 220
     watch_spend: 120
     scale_roas: 700
+
+# Budget redistribution thresholds (used by the budget optimizer).
+# Marginal efficiency = campaign ROAS (x) multiplied by its growth share —
+# an estimate of extra revenue per extra currency unit of budget.
+budget:
+  increase_efficiency: 10    # marginal efficiency at or above -> INCREASE
+  decrease_efficiency: 3     # marginal efficiency at or below -> DECREASE
+  shift_share: 0.15          # move this share of a DECREASE campaign's spend
+  confidence_conversions: 30 # conversions needed for 100% confidence

@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.core.workbook import WorkbookSheet
+from app.models.budget import BudgetAction, BudgetOptimizationReport
 from app.models.campaign import CampaignReport, MultiCampaignReport
 from app.models.product_decision import ProductDecision, ProductStatus
 
@@ -30,6 +31,11 @@ _FORMAT_PERCENT = "#,##0%"
 _FORMAT_CONVERSIONS = "0.00"
 _FORMAT_CTR = '0.00"%"'
 
+_BUDGET_ACTION_COLORS: dict[str, str] = {
+    BudgetAction.INCREASE: "006100",
+    BudgetAction.KEEP: "808080",
+    BudgetAction.DECREASE: "9C0006",
+}
 _STATUS_STYLES: dict[str, tuple[str, str]] = {
     ProductStatus.KEEP: ("C6EFCE", "006100"),
     ProductStatus.WATCH: ("FFEB9C", "9C6500"),
@@ -100,7 +106,12 @@ class _ProductsLayout:
 class ExcelWorkbookExporter:
     """Export an analyzed product report to a formatted Excel workbook."""
 
-    def export(self, report: MultiCampaignReport, output_path: Path) -> None:
+    def export(
+        self,
+        report: MultiCampaignReport,
+        output_path: Path,
+        budget: BudgetOptimizationReport | None = None,
+    ) -> None:
         """Write the complete report workbook to the supplied path."""
         workbook = Workbook()
         workbook.remove(workbook.active)
@@ -109,10 +120,10 @@ class ExcelWorkbookExporter:
         layout = self._write_products_sheet(products_sheet, report)
 
         dashboard_sheet = workbook.create_sheet(WorkbookSheet.DASHBOARD, index=0)
-        self._write_dashboard_sheet(dashboard_sheet, report, layout)
+        self._write_dashboard_sheet(dashboard_sheet, report, layout, budget)
 
         summary_sheet = workbook.create_sheet(WorkbookSheet.EXECUTIVE_SUMMARY, index=1)
-        self._write_executive_summary_sheet(summary_sheet, report, layout)
+        self._write_executive_summary_sheet(summary_sheet, report, layout, budget)
 
         for status in (
             ProductStatus.KEEP,
@@ -235,6 +246,7 @@ class ExcelWorkbookExporter:
         sheet: Worksheet,
         report: MultiCampaignReport,
         layout: _ProductsLayout,
+        budget: BudgetOptimizationReport | None,
     ) -> None:
         """Write KPI cards backed by formulas over the Products sheet."""
         sheet.sheet_properties.tabColor = "1F3864"
@@ -310,6 +322,9 @@ class ExcelWorkbookExporter:
                 )
 
         self._write_campaign_comparison(sheet, report, layout, anchor_row=16)
+        if budget is not None:
+            budget_anchor = 16 + len(report.campaigns) + 3
+            self._write_budget_optimization(sheet, report, layout, budget, budget_anchor)
 
         for column_index in range(1, 19):
             sheet.column_dimensions[get_column_letter(column_index)].width = 12.0
@@ -375,6 +390,91 @@ class ExcelWorkbookExporter:
                 cell.font = _BODY_FONT
                 cell.border = _THIN_BORDER
 
+    def _write_budget_optimization(
+        self,
+        sheet: Worksheet,
+        report: MultiCampaignReport,
+        layout: _ProductsLayout,
+        budget: BudgetOptimizationReport,
+        anchor_row: int,
+    ) -> None:
+        """Write the budget redistribution section of the dashboard."""
+        section_title = sheet.cell(row=anchor_row, column=2, value="Budget Optimization")
+        section_title.font = Font(name=_FONT_NAME, bold=True, size=12, color="1F3864")
+
+        headers = (
+            "Campaign",
+            "Current Spend",
+            "ROAS",
+            "Recommendation",
+            "Move Budget",
+            "Expected Gain",
+        )
+        header_row = anchor_row + 1
+        self._write_header_row(sheet, headers, row=header_row, start_column=2)
+
+        campaign_range = layout.column_range(layout.campaign_column)
+        cost_range = layout.column_range(layout.cost_column)
+        revenue_range = layout.column_range(layout.revenue_column)
+        moved_out = {
+            transfer.source_campaign: transfer.amount for transfer in budget.transfers
+        }
+        moved_in: dict[str, float] = {}
+        gains: dict[str, float] = {}
+        for transfer in budget.transfers:
+            moved_in[transfer.destination_campaign] = (
+                moved_in.get(transfer.destination_campaign, 0.0) + transfer.amount
+            )
+            gains[transfer.source_campaign] = transfer.expected_revenue_increase
+
+        for assessment_offset, assessment in enumerate(budget.assessments):
+            row_number = header_row + 1 + assessment_offset
+            escaped_name = assessment.campaign_name.replace('"', '""')
+            name_criterion = f'"{escaped_name}"'
+            movement = moved_in.get(assessment.campaign_name, 0.0) - moved_out.get(
+                assessment.campaign_name, 0.0
+            )
+            values: tuple[object, ...] = (
+                assessment.campaign_name,
+                f"=SUMIFS({cost_range},{campaign_range},{name_criterion})",
+                (
+                    f"=IFERROR(SUMIFS({revenue_range},{campaign_range},{name_criterion})"
+                    f"/SUMIFS({cost_range},{campaign_range},{name_criterion}),0)"
+                ),
+                str(assessment.action),
+                movement,
+                gains.get(assessment.campaign_name, 0.0),
+            )
+            formats = (
+                "General",
+                _FORMAT_MONEY,
+                _FORMAT_PERCENT,
+                "General",
+                '+#,##0.00;-#,##0.00;"—"',
+                '+#,##0.00;-#,##0.00;"—"',
+            )
+            for column_offset, (value, number_format) in enumerate(
+                zip(values, formats, strict=True)
+            ):
+                cell = sheet.cell(row=row_number, column=2 + column_offset)
+                cell.value = value
+                cell.number_format = number_format
+                cell.font = _BODY_FONT
+                cell.border = _THIN_BORDER
+            action_cell = sheet.cell(row=row_number, column=5)
+            action_cell.font = Font(
+                name=_FONT_NAME,
+                bold=True,
+                color=_BUDGET_ACTION_COLORS[assessment.action],
+            )
+
+        total_row = header_row + 1 + len(budget.assessments)
+        total_label = sheet.cell(row=total_row, column=2, value="Expected total gain")
+        total_label.font = Font(name=_FONT_NAME, bold=True)
+        total_cell = sheet.cell(row=total_row, column=7, value=budget.total_expected_gain)
+        total_cell.number_format = '+#,##0.00;-#,##0.00;"—"'
+        total_cell.font = Font(name=_FONT_NAME, bold=True, color="006100")
+
     def _write_kpi_card(
         self,
         sheet: Worksheet,
@@ -426,6 +526,7 @@ class ExcelWorkbookExporter:
         sheet: Worksheet,
         report: MultiCampaignReport,
         layout: _ProductsLayout,
+        budget: BudgetOptimizationReport | None,
     ) -> None:
         """Write the narrative summary with formula-backed key metrics."""
         sheet.sheet_properties.tabColor = "808080"
@@ -495,10 +596,68 @@ class ExcelWorkbookExporter:
         current_row = actions_row + 1
         for campaign in report.campaigns:
             current_row = self._write_campaign_recommendations(sheet, campaign, current_row)
+        if budget is not None:
+            self._write_action_plan(sheet, report, budget, current_row + 1)
 
         sheet.column_dimensions["A"].width = 3.0
         for column_letter in ("B", "C", "D", "E", "F", "G", "H"):
             sheet.column_dimensions[column_letter].width = 18.0
+
+    def _write_action_plan(
+        self,
+        sheet: Worksheet,
+        report: MultiCampaignReport,
+        budget: BudgetOptimizationReport,
+        anchor_row: int,
+    ) -> None:
+        """Write the budget redistribution action plan."""
+        title_cell = sheet.cell(row=anchor_row, column=2, value="Action Plan")
+        title_cell.font = Font(name=_FONT_NAME, bold=True, size=12)
+        currency = self._detect_currency(report)
+        currency_suffix = f" {currency}" if currency else ""
+
+        current_row = anchor_row + 1
+        if not budget.transfers:
+            note_cell = sheet.cell(row=current_row, column=2)
+            note_cell.value = (
+                "• No budget redistribution recommended — "
+                "the current allocation is balanced."
+            )
+            note_cell.font = _BODY_FONT
+            return
+
+        for transfer in budget.transfers:
+            decrease_cell = sheet.cell(row=current_row, column=2)
+            decrease_cell.value = (
+                f"• Decrease {transfer.source_campaign} by "
+                f"{transfer.amount:,.2f}{currency_suffix}"
+            )
+            decrease_cell.font = _BODY_FONT
+            increase_cell = sheet.cell(row=current_row + 1, column=2)
+            increase_cell.value = (
+                f"• Increase {transfer.destination_campaign} by "
+                f"{transfer.amount:,.2f}{currency_suffix} "
+                f"(confidence {transfer.confidence:.0%})"
+            )
+            increase_cell.font = _BODY_FONT
+            current_row += 2
+
+        gain_cell = sheet.cell(row=current_row + 1, column=2)
+        gain_cell.value = (
+            f"Expected monthly gain: +{budget.total_expected_gain:,.2f} revenue"
+        )
+        gain_cell.font = Font(name=_FONT_NAME, bold=True, color="006100")
+
+    @staticmethod
+    def _detect_currency(report: MultiCampaignReport) -> str:
+        """Return the dominant currency code from the source data, if any."""
+        for column_name in ("код_валюти", "currency_code", "currency"):
+            if column_name in report.products.columns:
+                values = report.products[column_name].dropna().astype(str)
+                if not values.empty:
+                    return str(values.mode().iloc[0])
+
+        return ""
 
     @staticmethod
     def _write_campaign_recommendations(

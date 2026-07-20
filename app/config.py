@@ -57,6 +57,15 @@ class DecisionThresholds(_StrictModel):
     keep: KeepThresholds = KeepThresholds()
 
 
+class BudgetThresholds(_StrictModel):
+    """Thresholds driving budget redistribution recommendations."""
+
+    increase_efficiency: float = 10.0
+    decrease_efficiency: float = 3.0
+    shift_share: float = 0.15
+    confidence_conversions: float = 30.0
+
+
 class CampaignThresholds(_StrictModel):
     """Shorthand per-campaign overrides of the global thresholds."""
 
@@ -72,6 +81,7 @@ class ThresholdConfiguration(_StrictModel):
     scale: ScaleThresholds = ScaleThresholds()
     watch: WatchThresholds = WatchThresholds()
     keep: KeepThresholds = KeepThresholds()
+    budget: BudgetThresholds = BudgetThresholds()
     campaigns: dict[str, CampaignThresholds] = Field(default_factory=dict)
 
     def base_thresholds(self) -> DecisionThresholds:

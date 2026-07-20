@@ -11,6 +11,7 @@ from app.models.campaign import MultiCampaignReport
 from app.models.product_decision import ProductDecision
 from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
+from app.services.budget_optimizer import BudgetOptimizer
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
 
 # ConfigurationError subclasses ValueError, so run() maps it to exit code 2.
@@ -33,7 +34,8 @@ def run(
         configuration = load_configuration(config_path)
         analyzer = MultiCampaignAnalyzer(configuration=configuration, pipeline=pipeline)
         report = analyzer.analyze(source_paths)
-        ExcelWorkbookExporter().export(report, output_path)
+        budget = BudgetOptimizer(configuration).optimize(report)
+        ExcelWorkbookExporter().export(report, output_path, budget)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         return 2

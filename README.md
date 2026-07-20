@@ -104,6 +104,17 @@ campaigns:
 
 Thresholds not listed in a campaign section keep the global values.
 
+### Budget optimization
+
+The workbook includes a budget redistribution recommendation built from
+per-campaign efficiency scores. Marginal efficiency is the campaign ROAS
+multiplied by its growth share (spend in SCALE products or below the
+watch threshold); saturation is the complement of the growth share. The
+`budget` section of `config.yaml` controls the INCREASE and DECREASE
+efficiency thresholds, the share of spend to move, and the conversions
+required for full confidence. Results appear in the Budget Optimization
+table on the Dashboard and the Action Plan in the Executive Summary.
+
 Rules are checked in order: watch (`max_cost`), pause (`min_cost`,
 `max_conversions`), scale (`min_roas` in percent, `min_conversion_value`),
 keep (`min_conversions`). Products that match no rule stay on the watch
