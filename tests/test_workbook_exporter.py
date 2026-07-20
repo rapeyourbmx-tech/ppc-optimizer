@@ -7,9 +7,8 @@ import pytest
 from openpyxl import load_workbook
 
 from app.core.workbook import WorkbookSheet
-from app.models.report import ProductReport
 from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
-from app.services.application_pipeline import ApplicationPipeline
+from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
 
 
 @pytest.fixture
@@ -48,13 +47,7 @@ def exported_workbook_path(tmp_path: Path) -> Path:
         ]
     ).to_csv(source_path, index=False)
 
-    result = ApplicationPipeline().run(source_path)
-    report = ProductReport(
-        products=result.products,
-        decisions=result.decisions,
-        campaign_summary=result.campaign_summary,
-        audit_report=result.audit_report,
-    )
+    report = MultiCampaignAnalyzer().analyze([source_path])
     output_path = tmp_path / "report.xlsx"
     ExcelWorkbookExporter().export(report, output_path)
     return output_path

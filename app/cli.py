@@ -15,7 +15,7 @@ app = typer.Typer(
 
 @app.command()
 def analyze(
-    file_path: Path,
+    file_paths: list[Path],
     explain: Annotated[
         bool,
         typer.Option("--explain", help="Print a metric-based explanation for every decision."),
@@ -34,7 +34,7 @@ def analyze(
 ) -> None:
     """Analyze one CSV or XLSX Google Ads product report."""
     exit_code = run(
-        file_path,
+        file_paths,
         explain=explain,
         config_path=config_path,
         output_path=output_path,

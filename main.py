@@ -1,5 +1,6 @@
 """Command-line entry point for PPC Optimizer."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
 
@@ -7,27 +8,30 @@ import typer
 
 from app.analyzers.product_analyzer import ProductAnalyzer
 from app.config import ConfigurationError, load_thresholds
+from app.models.campaign import MultiCampaignReport
 from app.models.product_decision import ProductDecision
-from app.models.report import ProductReport
 from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
-from app.services.application_pipeline import ApplicationPipeline, PipelineResult
+from app.services.application_pipeline import ApplicationPipeline
+from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
 
 _EXPLANATION_SEPARATOR = "-" * 32
 
 
 def run(
-    file_path: Path,
+    file_paths: Path | Sequence[Path],
     pipeline: ApplicationPipeline | None = None,
     *,
     explain: bool = False,
     config_path: Path | None = None,
     output_path: Path = Path("report.xlsx"),
 ) -> int:
-    """Run the pipeline, export the workbook, and print a console summary."""
+    """Analyze one or more reports, export the workbook, print a summary."""
+    source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
+
     try:
         active_pipeline = pipeline or _build_pipeline(config_path)
-        result = active_pipeline.run(file_path)
-        _export_workbook(result, output_path)
+        report = MultiCampaignAnalyzer(pipeline=active_pipeline).analyze(source_paths)
+        ExcelWorkbookExporter().export(report, output_path)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         return 2
@@ -35,17 +39,17 @@ def run(
         typer.echo(f"Unexpected error: {error}", err=True)
         return 1
 
-    typer.echo(_console_summary(result))
+    typer.echo(_console_summary(report))
     typer.echo(f"Report saved: {output_path}")
     if explain:
-        typer.echo(_decision_explanations(result.decisions))
+        typer.echo(_decision_explanations(report.decisions))
     return 0
 
 
 def main(
-    file_path: Annotated[
-        Path,
-        typer.Argument(help="Path to a CSV or XLSX Google Ads product report."),
+    file_paths: Annotated[
+        list[Path],
+        typer.Argument(help="One or more CSV or XLSX Google Ads product reports."),
     ],
     explain: Annotated[
         bool,
@@ -63,9 +67,9 @@ def main(
         typer.Option("--output", help="Path of the generated Excel workbook."),
     ] = Path("report.xlsx"),
 ) -> None:
-    """Accept a report path and exit with the pipeline status code."""
+    """Accept report paths and exit with the pipeline status code."""
     exit_code = run(
-        file_path,
+        file_paths,
         explain=explain,
         config_path=config_path,
         output_path=output_path,
@@ -79,17 +83,6 @@ def cli() -> None:
     typer.run(main)
 
 
-def _export_workbook(result: PipelineResult, output_path: Path) -> None:
-    """Export the pipeline result to the report workbook."""
-    report = ProductReport(
-        products=result.products,
-        decisions=result.decisions,
-        campaign_summary=result.campaign_summary,
-        audit_report=result.audit_report,
-    )
-    ExcelWorkbookExporter().export(report, output_path)
-
-
 def _build_pipeline(config_path: Path | None) -> ApplicationPipeline:
     """Build the pipeline with thresholds from the configuration file.
 
@@ -100,10 +93,33 @@ def _build_pipeline(config_path: Path | None) -> ApplicationPipeline:
     return ApplicationPipeline(product_analyzer=ProductAnalyzer(thresholds=thresholds))
 
 
-def _console_summary(result: PipelineResult) -> str:
-    """Format the single-line success summary for console output."""
-    summary = result.campaign_summary
-    health = result.audit_report.overall_health
+def _console_summary(report: MultiCampaignReport) -> str:
+    """Format the success summary for one or more analyzed campaigns."""
+    if len(report.campaigns) == 1:
+        campaign = report.campaigns[0]
+        return _campaign_summary_line(
+            campaign.campaign_summary,
+            campaign.health,
+        )
+
+    lines = [
+        f"{campaign.metadata.name}: "
+        + _campaign_summary_line(campaign.campaign_summary, campaign.health)
+        for campaign in report.campaigns
+    ]
+    overall = report.overall_summary
+    lines.append(
+        f"Overall: Health: {report.overall_health} | "
+        f"Products: {overall.total_products} | "
+        f"Cost: {overall.total_cost:,.2f} | Revenue: {overall.total_revenue:,.2f} | "
+        f"Conversions: {overall.total_conversions:,.2f} | Keep: {overall.keep} | "
+        f"Watch: {overall.watch} | Pause: {overall.pause} | Scale: {overall.scale}"
+    )
+    return "\n".join(lines)
+
+
+def _campaign_summary_line(summary: object, health: str) -> str:
+    """Format the classic single-campaign summary line."""
     return (
         f"Health: {health} | Products: {summary.total_products} | Keep: {summary.keep} | "
         f"Watch: {summary.watch} | Pause: {summary.pause} | Scale: {summary.scale}"

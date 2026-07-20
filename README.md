@@ -75,6 +75,19 @@ with `--config`:
 python main.py data\product_report.csv --config my_thresholds.yaml
 ```
 
+## Multiple campaigns
+
+Pass several report files to analyze them as separate campaigns in one run:
+
+```powershell
+python main.py data\high.csv data\average.csv data\low.csv
+```
+
+Each file becomes one campaign (name and type are derived from the file
+name), every product keeps its campaign_name, campaign_type, and
+source_file, the Dashboard gains a campaign comparison table, and the
+Executive Summary lists recommendations per campaign.
+
 Rules are checked in order: watch (`max_cost`), pause (`min_cost`,
 `max_conversions`), scale (`min_roas` in percent, `min_conversion_value`),
 keep (`min_conversions`). Products that match no rule stay on the watch

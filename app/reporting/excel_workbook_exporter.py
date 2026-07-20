@@ -12,8 +12,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
 from app.core.workbook import WorkbookSheet
+from app.models.campaign import CampaignReport, MultiCampaignReport
 from app.models.product_decision import ProductDecision, ProductStatus
-from app.models.report import ProductReport
 
 _FONT_NAME = "Arial"
 _HEADER_FILL = PatternFill("solid", fgColor="1F3864")
@@ -43,6 +43,9 @@ _RECOMMENDATIONS: dict[str, str] = {
     ProductStatus.SCALE: "Increase the budget and bids for this product.",
 }
 _PRETTY_COLUMN_NAMES: dict[str, str] = {
+    "campaign_name": "Campaign",
+    "campaign_type": "Campaign Type",
+    "source_file": "Source File",
     "product_id": "Product ID",
     "product": "Product",
     "clicks": "Clicks",
@@ -78,6 +81,7 @@ class _ProductsLayout:
     """Cell coordinates of key Products-sheet columns for formulas."""
 
     sku_column: str
+    campaign_column: str
     cost_column: str
     revenue_column: str
     conversions_column: str
@@ -96,7 +100,7 @@ class _ProductsLayout:
 class ExcelWorkbookExporter:
     """Export an analyzed product report to a formatted Excel workbook."""
 
-    def export(self, report: ProductReport, output_path: Path) -> None:
+    def export(self, report: MultiCampaignReport, output_path: Path) -> None:
         """Write the complete report workbook to the supplied path."""
         workbook = Workbook()
         workbook.remove(workbook.active)
@@ -132,7 +136,7 @@ class ExcelWorkbookExporter:
     def _write_products_sheet(
         self,
         sheet: Worksheet,
-        report: ProductReport,
+        report: MultiCampaignReport,
     ) -> _ProductsLayout:
         """Write every original column plus decision columns, return the layout."""
         sheet.sheet_properties.tabColor = "1F3864"
@@ -214,6 +218,7 @@ class ExcelWorkbookExporter:
 
         return _ProductsLayout(
             sku_column=get_column_letter(source_columns.index("product_id") + 1),
+            campaign_column=get_column_letter(source_columns.index("campaign_name") + 1),
             cost_column=cost_letter,
             revenue_column=revenue_letter,
             conversions_column=get_column_letter(conversions_index),
@@ -228,7 +233,7 @@ class ExcelWorkbookExporter:
     def _write_dashboard_sheet(
         self,
         sheet: Worksheet,
-        report: ProductReport,
+        report: MultiCampaignReport,
         layout: _ProductsLayout,
     ) -> None:
         """Write KPI cards backed by formulas over the Products sheet."""
@@ -239,7 +244,8 @@ class ExcelWorkbookExporter:
             title="PPC Optimizer — Campaign Dashboard",
             subtitle=(
                 f"Generated {date.today().isoformat()} · "
-                f"{report.campaign_summary.total_products} products analyzed"
+                f"{report.overall_summary.total_products} products · "
+                f"{len(report.campaigns)} campaign(s)"
             ),
         )
 
@@ -288,7 +294,7 @@ class ExcelWorkbookExporter:
                 "1F4E79",
             ),
             ("TOTAL CONVERSIONS", f"=SUM({conversions_range})", _FORMAT_CONVERSIONS, "1F3864"),
-            ("CAMPAIGN HEALTH", report.audit_report.overall_health, "General", "9C6500"),
+            ("CAMPAIGN HEALTH", report.overall_health, "General", "9C6500"),
         )
 
         for row_anchor, cards in ((4, top_cards), (8, status_cards), (12, bottom_cards)):
@@ -303,8 +309,71 @@ class ExcelWorkbookExporter:
                     accent_color=accent,
                 )
 
+        self._write_campaign_comparison(sheet, report, layout, anchor_row=16)
+
         for column_index in range(1, 19):
             sheet.column_dimensions[get_column_letter(column_index)].width = 12.0
+        sheet.column_dimensions["B"].width = 24.0
+        sheet.column_dimensions["I"].width = 16.0
+
+    def _write_campaign_comparison(
+        self,
+        sheet: Worksheet,
+        report: MultiCampaignReport,
+        layout: _ProductsLayout,
+        *,
+        anchor_row: int,
+    ) -> None:
+        """Write the formula-backed campaign comparison table."""
+        section_title = sheet.cell(row=anchor_row, column=2, value="Campaign Comparison")
+        section_title.font = Font(name=_FONT_NAME, bold=True, size=12, color="1F3864")
+
+        headers = ("Campaign", "Products", "Cost", "Revenue", "ROAS", "Scale", "Pause", "Health")
+        header_row = anchor_row + 1
+        self._write_header_row(sheet, headers, row=header_row, start_column=2)
+        campaign_range = layout.column_range(layout.campaign_column)
+        cost_range = layout.column_range(layout.cost_column)
+        revenue_range = layout.column_range(layout.revenue_column)
+        status_range = layout.column_range(layout.status_column)
+
+        for campaign_offset, campaign in enumerate(report.campaigns):
+            row_number = header_row + 1 + campaign_offset
+            escaped_name = campaign.metadata.name.replace('"', '""')
+            name_criterion = f'"{escaped_name}"'
+            values: tuple[object, ...] = (
+                campaign.metadata.name,
+                f"=COUNTIF({campaign_range},{name_criterion})",
+                f"=SUMIFS({cost_range},{campaign_range},{name_criterion})",
+                f"=SUMIFS({revenue_range},{campaign_range},{name_criterion})",
+                f"=IFERROR(E{row_number}/D{row_number},0)",
+                (
+                    f'=COUNTIFS({campaign_range},{name_criterion},'
+                    f'{status_range},"SCALE")'
+                ),
+                (
+                    f'=COUNTIFS({campaign_range},{name_criterion},'
+                    f'{status_range},"PAUSE")'
+                ),
+                campaign.health,
+            )
+            formats = (
+                "General",
+                _FORMAT_INTEGER,
+                _FORMAT_MONEY,
+                _FORMAT_MONEY,
+                _FORMAT_PERCENT,
+                _FORMAT_INTEGER,
+                _FORMAT_INTEGER,
+                "General",
+            )
+            for column_offset, (value, number_format) in enumerate(
+                zip(values, formats, strict=True)
+            ):
+                cell = sheet.cell(row=row_number, column=2 + column_offset)
+                cell.value = value
+                cell.number_format = number_format
+                cell.font = _BODY_FONT
+                cell.border = _THIN_BORDER
 
     def _write_kpi_card(
         self,
@@ -355,7 +424,7 @@ class ExcelWorkbookExporter:
     def _write_executive_summary_sheet(
         self,
         sheet: Worksheet,
-        report: ProductReport,
+        report: MultiCampaignReport,
         layout: _ProductsLayout,
     ) -> None:
         """Write the narrative summary with formula-backed key metrics."""
@@ -369,7 +438,7 @@ class ExcelWorkbookExporter:
 
         health_label = sheet.cell(row=4, column=2, value="Campaign health")
         health_label.font = Font(name=_FONT_NAME, bold=True, size=12)
-        health_value = sheet.cell(row=4, column=4, value=report.audit_report.overall_health)
+        health_value = sheet.cell(row=4, column=4, value=report.overall_health)
         health_value.font = Font(name=_FONT_NAME, bold=True, size=12, color="9C6500")
 
         cost_range = layout.column_range(layout.cost_column)
@@ -405,31 +474,54 @@ class ExcelWorkbookExporter:
             value_cell.number_format = number_format
             value_cell.alignment = Alignment(horizontal="right")
 
+        campaigns_needing_attention = sum(
+            1 for campaign in report.campaigns if campaign.health != "Healthy"
+        )
         summary_row = metrics_start_row + len(metrics) + 1
         summary_cell = sheet.cell(row=summary_row, column=2)
-        summary_cell.value = report.audit_report.summary_text
-        summary_cell.font = _NOTE_FONT
-        summary_cell.alignment = Alignment(wrap_text=True, vertical="top")
-        sheet.merge_cells(
-            start_row=summary_row,
-            start_column=2,
-            end_row=summary_row + 1,
-            end_column=8,
+        summary_cell.value = (
+            f"{campaigns_needing_attention} of {len(report.campaigns)} "
+            "campaign(s) need attention."
         )
+        summary_cell.font = _NOTE_FONT
 
-        actions_row = summary_row + 3
-        actions_title = sheet.cell(row=actions_row, column=2, value="Recommended actions")
+        actions_row = summary_row + 2
+        actions_title = sheet.cell(
+            row=actions_row,
+            column=2,
+            value="Recommended actions per campaign",
+        )
         actions_title.font = Font(name=_FONT_NAME, bold=True, size=12)
-        for recommendation_offset, recommendation in enumerate(
-            report.audit_report.recommendations, start=1
-        ):
-            cell = sheet.cell(row=actions_row + recommendation_offset, column=2)
-            cell.value = f"• {recommendation}"
-            cell.font = _BODY_FONT
+        current_row = actions_row + 1
+        for campaign in report.campaigns:
+            current_row = self._write_campaign_recommendations(sheet, campaign, current_row)
 
         sheet.column_dimensions["A"].width = 3.0
         for column_letter in ("B", "C", "D", "E", "F", "G", "H"):
             sheet.column_dimensions[column_letter].width = 18.0
+
+    @staticmethod
+    def _write_campaign_recommendations(
+        sheet: Worksheet,
+        campaign: CampaignReport,
+        start_row: int,
+    ) -> int:
+        """Write one campaign's recommendation block, return the next free row."""
+        metadata = campaign.metadata
+        title_cell = sheet.cell(row=start_row + 1, column=2)
+        title_cell.value = (
+            f"{metadata.name} ({metadata.campaign_type}, {metadata.source_file}) — "
+            f"{campaign.health}"
+        )
+        title_cell.font = Font(name=_FONT_NAME, bold=True, color="1F3864")
+
+        recommendations = campaign.report.audit_report.recommendations
+        for recommendation_offset, recommendation in enumerate(recommendations, start=2):
+            cell = sheet.cell(row=start_row + recommendation_offset, column=2)
+            cell.value = f"• {recommendation}"
+            cell.font = _BODY_FONT
+
+        return start_row + len(recommendations) + 2
 
     # ------------------------------------------------------------------
     # Per-status and top-products sheets
@@ -437,20 +529,16 @@ class ExcelWorkbookExporter:
     def _write_status_sheet(
         self,
         sheet: Worksheet,
-        report: ProductReport,
+        report: MultiCampaignReport,
         status: ProductStatus,
     ) -> None:
         """Write every decision of one status into its own sheet."""
         fill_color, font_color = _STATUS_STYLES[status]
         sheet.sheet_properties.tabColor = fill_color
         decisions = [
-            (decision, product_name)
-            for decision, product_name in zip(
-                report.decisions,
-                self._product_names(report.products),
-                strict=True,
-            )
-            if decision.status is status
+            row
+            for row in self._decision_rows(report)
+            if row[0].status is status
         ]
         self._write_decision_table(
             sheet,
@@ -461,13 +549,12 @@ class ExcelWorkbookExporter:
     def _write_top_products_sheet(
         self,
         sheet: Worksheet,
-        report: ProductReport,
+        report: MultiCampaignReport,
         *,
         winners: bool,
     ) -> None:
         """Write the top winners (by ROAS) or top losers (by wasted cost)."""
-        names = self._product_names(report.products)
-        paired = list(zip(report.decisions, names, strict=True))
+        paired = self._decision_rows(report)
         if winners:
             sheet.sheet_properties.tabColor = "006100"
             selected = sorted(
@@ -498,12 +585,13 @@ class ExcelWorkbookExporter:
         self,
         sheet: Worksheet,
         *,
-        rows: list[tuple[ProductDecision, str]],
+        rows: list[tuple[ProductDecision, str, str]],
         empty_message: str,
     ) -> None:
         """Write one decision table with shared columns and formatting."""
         headers = (
             "SKU",
+            "Campaign",
             "Product",
             "Clicks",
             "Cost",
@@ -516,6 +604,7 @@ class ExcelWorkbookExporter:
         column_formats = (
             "General",
             "General",
+            "General",
             _FORMAT_INTEGER,
             _FORMAT_MONEY,
             _FORMAT_CONVERSIONS,
@@ -524,16 +613,17 @@ class ExcelWorkbookExporter:
             "General",
         )
 
-        for row_offset, (decision, product_name) in enumerate(rows):
+        for row_offset, (decision, product_name, campaign_name) in enumerate(rows):
             row_number = row_offset + 2
             values: tuple[object, ...] = (
                 decision.sku,
+                campaign_name,
                 product_name,
                 decision.clicks,
                 decision.cost,
                 decision.conversions,
                 decision.conversion_value,
-                f"=IFERROR(F{row_number}/D{row_number},0)",
+                f"=IFERROR(G{row_number}/E{row_number},0)",
                 decision.reason,
             )
             for column_offset, (value, number_format) in enumerate(
@@ -546,10 +636,10 @@ class ExcelWorkbookExporter:
 
         last_row = len(rows) + 1
         sheet.freeze_panes = "A2"
-        sheet.auto_filter.ref = f"A1:H{max(last_row, 1)}"
+        sheet.auto_filter.ref = f"A1:I{max(last_row, 1)}"
         if rows:
-            sheet.conditional_formatting.add(f"G2:G{last_row}", _roas_color_scale())
-            sheet.conditional_formatting.add(f"D2:D{last_row}", _cost_data_bar())
+            sheet.conditional_formatting.add(f"H2:H{last_row}", _roas_color_scale())
+            sheet.conditional_formatting.add(f"E2:E{last_row}", _cost_data_bar())
         else:
             note_cell = sheet.cell(row=2, column=1, value=empty_message)
             note_cell.font = _NOTE_FONT
@@ -559,12 +649,18 @@ class ExcelWorkbookExporter:
     # Shared helpers
     # ------------------------------------------------------------------
     @staticmethod
-    def _product_names(products: pd.DataFrame) -> list[str]:
-        """Return one display name per product row."""
+    def _decision_rows(
+        report: MultiCampaignReport,
+    ) -> list[tuple[ProductDecision, str, str]]:
+        """Pair every decision with its product and campaign names."""
+        products = report.products
         if "product" in products.columns:
-            return products["product"].fillna("").astype(str).tolist()
+            product_names = products["product"].fillna("").astype(str).tolist()
+        else:
+            product_names = [""] * len(products)
+        campaign_names = products["campaign_name"].astype(str).tolist()
 
-        return [""] * len(products)
+        return list(zip(report.decisions, product_names, campaign_names, strict=True))
 
     @staticmethod
     def _pretty_column_name(column_name: str) -> str:
@@ -575,14 +671,20 @@ class ExcelWorkbookExporter:
         return column_name.replace("_", " ").strip().capitalize()
 
     @staticmethod
-    def _write_header_row(sheet: Worksheet, headers: tuple[str, ...] | list[str]) -> None:
+    def _write_header_row(
+        sheet: Worksheet,
+        headers: tuple[str, ...] | list[str],
+        *,
+        row: int = 1,
+        start_column: int = 1,
+    ) -> None:
         """Write one styled header row."""
         for column_offset, header in enumerate(headers):
-            cell = sheet.cell(row=1, column=column_offset + 1, value=header)
+            cell = sheet.cell(row=row, column=start_column + column_offset, value=header)
             cell.fill = _HEADER_FILL
             cell.font = _HEADER_FONT
             cell.alignment = Alignment(horizontal="center", vertical="center")
-        sheet.row_dimensions[1].height = 22.0
+        sheet.row_dimensions[row].height = 22.0
 
     @staticmethod
     def _write_title(sheet: Worksheet, *, title: str, subtitle: str) -> None:
