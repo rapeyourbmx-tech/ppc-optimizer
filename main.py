@@ -1,5 +1,7 @@
 """Command-line entry point for PPC Optimizer."""
 
+import logging
+import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated
@@ -13,6 +15,7 @@ from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
 from app.services.budget_optimizer import BudgetOptimizer
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
+from app.logging_setup import configure_logging, get_logger
 from app.services.error_presenter import present_error
 from app.services.report_validator import ReportValidator
 from app.version import APP_NAME, __version__
@@ -42,24 +45,42 @@ def run(
     are printed as friendly messages, never as Python tracebacks.
     """
     source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
+    started_at = time.perf_counter()
+    logger = _configure_run_logging(verbose)
+    logger.info("%s v%s started", APP_NAME, __version__)
 
     if validate:
-        return _run_validation(source_paths)
+        return _run_validation(source_paths, logger)
 
     try:
         _progress(verbose, "Loading configuration...")
         configuration = load_configuration(config_path)
+        logger.debug("Configuration source: %s", config_path or "config.yaml or defaults")
         resolved_output = output_path or Path(configuration.excel.output_file)
         analyzer = MultiCampaignAnalyzer(configuration=configuration, pipeline=pipeline)
         _progress(verbose, "Loading reports...")
+        logger.info(
+            "Loaded files: %s",
+            ", ".join(str(source_path) for source_path in source_paths),
+        )
         _progress(verbose, "Analyzing products...")
         report = analyzer.analyze(source_paths)
+        logger.info(
+            "Products analyzed: %d across %d campaign(s)",
+            report.overall_summary.total_products,
+            len(report.campaigns),
+        )
+        if report.overall_health != "Healthy":
+            logger.warning("Overall campaign health: %s", report.overall_health)
         budget = BudgetOptimizer(configuration).optimize(report)
         if not dry_run:
             _progress(verbose, "Generating workbook...")
             ExcelWorkbookExporter(configuration).export(report, resolved_output, budget)
+            logger.debug("Workbook written: %s", resolved_output)
     except Exception as error:  # noqa: BLE001 — classified by the presenter
         exit_code, message = present_error(error)
+        logger.error("%s: %s (exit code %d)", type(error).__name__, error, exit_code)
+        logger.debug("Stack trace:", exc_info=error)
         typer.echo(message, err=True)
         return exit_code
 
@@ -68,8 +89,22 @@ def run(
         typer.echo(f"Report saved: {resolved_output}")
     if explain:
         typer.echo(_decision_explanations(report.decisions))
+    logger.info("Execution time: %.2f s", time.perf_counter() - started_at)
     _progress(verbose, "Done.")
     return 0
+
+
+def _configure_run_logging(verbose: bool) -> logging.Logger:
+    """Configure file logging, degrading gracefully when it is unavailable."""
+    try:
+        return configure_logging(verbose=verbose)
+    except OSError as error:
+        typer.echo(f"Warning: file logging disabled ({error}).", err=True)
+        logger = get_logger()
+        logger.handlers.clear()
+        logger.addHandler(logging.NullHandler())
+        logger.propagate = False
+        return logger
 
 
 def _progress(verbose: bool, message: str) -> None:
@@ -78,14 +113,20 @@ def _progress(verbose: bool, message: str) -> None:
         typer.echo(message)
 
 
-def _run_validation(source_paths: list[Path]) -> int:
+def _run_validation(source_paths: list[Path], logger: logging.Logger) -> int:
     """Validate the input files and report every issue found."""
+    logger.info(
+        "Validating files: %s",
+        ", ".join(str(source_path) for source_path in source_paths),
+    )
     result = ReportValidator().validate(source_paths)
     if result.is_valid:
+        logger.info("Validation passed: %d file(s) OK.", result.checked_files)
         typer.echo(f"Validation passed: {result.checked_files} file(s) OK.")
         return 0
 
     for issue in result.issues:
+        logger.warning("%s: %s", issue.source_file, issue.message)
         typer.echo(f"{issue.source_file}: {issue.message}", err=True)
     typer.echo(
         f"Validation failed: {len(result.issues)} issue(s) "
