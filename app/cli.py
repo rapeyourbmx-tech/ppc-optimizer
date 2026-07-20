@@ -34,6 +34,18 @@ def analyze(
             help="Path of the workbook (default: excel.output_file from config).",
         ),
     ] = None,
+    verbose: Annotated[
+        bool,
+        typer.Option("--verbose", help="Print progress messages for every stage."),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Run the analysis without generating Excel."),
+    ] = False,
+    validate: Annotated[
+        bool,
+        typer.Option("--validate", help="Validate the input files only."),
+    ] = False,
 ) -> None:
     """Analyze one CSV or XLSX Google Ads product report."""
     exit_code = run(
@@ -41,6 +53,9 @@ def analyze(
         explain=explain,
         config_path=config_path,
         output_path=output_path,
+        verbose=verbose,
+        dry_run=dry_run,
+        validate=validate,
     )
     if exit_code != 0:
         raise typer.Exit(code=exit_code)

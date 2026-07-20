@@ -13,6 +13,8 @@ from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
 from app.services.budget_optimizer import BudgetOptimizer
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
+from app.services.report_validator import ReportValidator
+from app.version import APP_NAME, __version__
 
 # ConfigurationError subclasses ValueError, so run() maps it to exit code 2.
 
@@ -26,22 +28,35 @@ def run(
     explain: bool = False,
     config_path: Path | None = None,
     output_path: Path | None = None,
+    verbose: bool = False,
+    dry_run: bool = False,
+    validate: bool = False,
 ) -> int:
     """Analyze one or more reports, export the workbook, print a summary.
 
     The configuration is loaded once here and injected into every service.
     When no output path is given, the workbook path comes from the
-    configuration's excel.output_file setting.
+    configuration's excel.output_file setting. Exit codes: 0 on success,
+    1 on validation or unexpected failure, 2 on input or configuration
+    errors.
     """
     source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
 
+    if validate:
+        return _run_validation(source_paths)
+
     try:
+        _progress(verbose, "Loading configuration...")
         configuration = load_configuration(config_path)
         resolved_output = output_path or Path(configuration.excel.output_file)
         analyzer = MultiCampaignAnalyzer(configuration=configuration, pipeline=pipeline)
+        _progress(verbose, "Loading reports...")
+        _progress(verbose, "Analyzing products...")
         report = analyzer.analyze(source_paths)
         budget = BudgetOptimizer(configuration).optimize(report)
-        ExcelWorkbookExporter(configuration).export(report, resolved_output, budget)
+        if not dry_run:
+            _progress(verbose, "Generating workbook...")
+            ExcelWorkbookExporter(configuration).export(report, resolved_output, budget)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         return 2
@@ -50,42 +65,136 @@ def run(
         return 1
 
     typer.echo(_console_summary(report))
-    typer.echo(f"Report saved: {resolved_output}")
+    if not dry_run:
+        typer.echo(f"Report saved: {resolved_output}")
     if explain:
         typer.echo(_decision_explanations(report.decisions))
+    _progress(verbose, "Done.")
     return 0
 
 
+def _progress(verbose: bool, message: str) -> None:
+    """Print one progress line when verbose mode is on."""
+    if verbose:
+        typer.echo(message)
+
+
+def _run_validation(source_paths: list[Path]) -> int:
+    """Validate the input files and report every issue found."""
+    result = ReportValidator().validate(source_paths)
+    if result.is_valid:
+        typer.echo(f"Validation passed: {result.checked_files} file(s) OK.")
+        return 0
+
+    for issue in result.issues:
+        typer.echo(f"{issue.source_file}: {issue.message}", err=True)
+    typer.echo(
+        f"Validation failed: {len(result.issues)} issue(s) "
+        f"in {result.checked_files} file(s).",
+        err=True,
+    )
+    return 1
+
+
+def _version_callback(value: bool) -> None:
+    """Print the application version and exit."""
+    if value:
+        typer.echo(f"{APP_NAME} {__version__}")
+        raise typer.Exit()
+
+
+application = typer.Typer(add_completion=False)
+
+
+@application.command(
+    epilog=(
+        "Exit codes: 0 success | 1 validation or unexpected failure | "
+        "2 input or configuration error."
+    ),
+)
 def main(
     file_paths: Annotated[
         list[Path],
-        typer.Argument(help="One or more CSV or XLSX Google Ads product reports."),
+        typer.Argument(
+            help="One or more CSV or XLSX Google Ads product reports.",
+            show_default=False,
+        ),
     ],
-    explain: Annotated[
-        bool,
-        typer.Option("--explain", help="Print a metric-based explanation for every decision."),
-    ] = False,
     config_path: Annotated[
         Path | None,
         typer.Option(
             "--config",
-            help="Path to a YAML or JSON thresholds file (default: config.yaml).",
+            help="Load a custom YAML or JSON configuration file.",
+            rich_help_panel="Input & Output",
         ),
     ] = None,
     output_path: Annotated[
         Path | None,
         typer.Option(
             "--output",
-            help="Path of the workbook (default: excel.output_file from config).",
+            help="Workbook path (default: excel.output_file from the configuration).",
+            rich_help_panel="Input & Output",
         ),
     ] = None,
+    explain: Annotated[
+        bool,
+        typer.Option(
+            "--explain",
+            help="Print a metric-based explanation for every decision.",
+            rich_help_panel="Modes",
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run",
+            help="Run the full analysis without generating Excel; print the summary only.",
+            rich_help_panel="Modes",
+        ),
+    ] = False,
+    validate: Annotated[
+        bool,
+        typer.Option(
+            "--validate",
+            help=(
+                "Validate the input files only (required columns, duplicated SKUs, "
+                "invalid numeric values, unsupported file types) and exit 0/1."
+            ),
+            rich_help_panel="Modes",
+        ),
+    ] = False,
+    verbose: Annotated[
+        bool,
+        typer.Option(
+            "--verbose",
+            help="Print progress messages for every stage.",
+            rich_help_panel="Diagnostics",
+        ),
+    ] = False,
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            help="Print the application version and exit.",
+            callback=_version_callback,
+            is_eager=True,
+            rich_help_panel="Diagnostics",
+        ),
+    ] = False,
 ) -> None:
-    """Accept report paths and exit with the pipeline status code."""
+    """Analyze Google Ads product reports and build a formatted Excel workbook.
+
+    Each input file is treated as one campaign; thresholds, campaign
+    overrides, and workbook settings come from config.yaml.
+    """
     exit_code = run(
         file_paths,
         explain=explain,
         config_path=config_path,
         output_path=output_path,
+        verbose=verbose,
+        dry_run=dry_run,
+        validate=validate,
     )
     if exit_code != 0:
         raise typer.Exit(code=exit_code)
@@ -93,7 +202,7 @@ def main(
 
 def cli() -> None:
     """Run the Typer command-line interface."""
-    typer.run(main)
+    application()
 
 
 def _console_summary(report: MultiCampaignReport) -> str:

@@ -83,6 +83,20 @@ with `--config`:
 python main.py data\product_report.csv --config my_thresholds.yaml
 ```
 
+## Command line
+
+```powershell
+python main.py report.csv                # analyze and build the workbook
+python main.py report.csv --dry-run      # summary only, no Excel
+python main.py report.csv --validate     # check the file, exit 0/1
+python main.py report.csv --verbose      # print progress stages
+python main.py --version                 # print the application version
+```
+
+Options are grouped in `--help` (Input & Output, Modes, Diagnostics).
+Exit codes: 0 success, 1 validation or unexpected failure, 2 input or
+configuration error.
+
 ## Multiple campaigns
 
 Pass several report files to analyze them as separate campaigns in one run:
