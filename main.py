@@ -96,9 +96,9 @@ def _run_validation(source_paths: list[Path]) -> int:
 
 
 def _version_callback(value: bool) -> None:
-    """Print the application version and exit."""
+    """Print the application name and version, then exit."""
     if value:
-        typer.echo(f"{APP_NAME} {__version__}")
+        typer.echo(f"{APP_NAME}\nv{__version__}")
         raise typer.Exit()
 
 

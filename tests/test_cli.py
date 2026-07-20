@@ -31,12 +31,12 @@ def report_file(tmp_path: Path) -> Path:
     return source_path
 
 
-def test_version_prints_and_exits() -> None:
-    """--version prints the application version with exit code 0."""
+def test_version_prints_name_and_version_on_separate_lines() -> None:
+    """--version prints the name and the v-prefixed version, then exits 0."""
     result = runner.invoke(application, ["--version"])
 
     assert result.exit_code == 0
-    assert f"PPC Optimizer {__version__}" in result.output
+    assert "PPC Optimizer\nv" + __version__ in result.output
 
 
 def test_backward_compatible_invocation(report_file: Path, tmp_path: Path) -> None:
