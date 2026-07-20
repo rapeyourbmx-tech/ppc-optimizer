@@ -9,7 +9,7 @@ formatted `report.xlsx` workbook.
 
 ## Requirements
 
-- Python 3.12 or newer
+- Python 3.11 or newer
 
 ## Setup
 
@@ -82,6 +82,34 @@ with `--config`:
 ```powershell
 python main.py data\product_report.csv --config my_thresholds.yaml
 ```
+
+## Installation
+
+Install the application with pip from the project root:
+
+```powershell
+pip install .
+```
+
+This provides the `ppc-optimizer` console command:
+
+```powershell
+ppc-optimizer high.csv average.csv low.csv
+```
+
+For development, use an editable install: `pip install -e .[dev]`.
+
+### Building distributions
+
+```powershell
+pip install build
+python -m build
+```
+
+The wheel and source distribution appear in `dist/`. The package version
+comes from `app/version.py` (single source of truth); the license is MIT
+(see `LICENSE`), and the author field in `pyproject.toml` is a
+placeholder to configure before publishing.
 
 ## Command line
 
