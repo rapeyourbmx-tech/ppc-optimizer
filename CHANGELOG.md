@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] — 2026-07-20
+
+### Added
+
+- **Desktop graphical interface** (`ppc-optimizer-gui`, `start-gui.bat`):
+  choose report files with native dialogs, press one button, get the
+  workbook — no command line required. Runs the analysis in a background
+  thread through the same pipeline as the CLI, with Open report and Open
+  folder buttons on success.
+
 ## [1.0.0] — 2026-07-20
 
 First production release.
@@ -45,4 +55,5 @@ First production release.
   MIT license, dynamic version from `app/version.py`
 - **Test suite**: 99 tests, including a real pip-installation check
 
+[1.1.0]: https://github.com/rapeyourbmx-tech/ppc-optimizer/releases/tag/v1.1.0
 [1.0.0]: https://github.com/rapeyourbmx-tech/ppc-optimizer/releases/tag/v1.0.0

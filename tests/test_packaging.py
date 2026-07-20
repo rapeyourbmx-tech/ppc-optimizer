@@ -1,6 +1,7 @@
 """Tests for production packaging and installation."""
 
 import os
+import re
 import subprocess
 import sys
 import tomllib
@@ -37,7 +38,7 @@ def test_version_is_sourced_from_the_application() -> None:
     dynamic_version = _pyproject()["tool"]["setuptools"]["dynamic"]["version"]
 
     assert dynamic_version == {"attr": "app.version.__version__"}
-    assert __version__ == "1.0.0"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", __version__)
 
 
 def test_console_entry_point_target_is_callable() -> None:

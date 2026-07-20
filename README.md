@@ -6,7 +6,7 @@ your budget.
 
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-103%20passing-brightgreen)
 
 ![Dashboard](docs/screenshots/dashboard.png)
 *<!-- Screenshot placeholder: Dashboard sheet -->*
@@ -63,6 +63,17 @@ This installs the `ppc-optimizer` console command. For development:
 ```bash
 pip install -e .[dev]
 ```
+
+## Graphical interface
+
+No command line needed: double-click **`start-gui.bat`** in the project
+folder (or run `ppc-optimizer-gui` after installation). Choose your
+report files, press **Generate report**, and open the workbook from the
+success screen. To keep it one click away, right-click `start-gui.bat`
+→ *Send to* → *Desktop (create shortcut)*.
+
+![GUI](docs/screenshots/gui.png)
+*<!-- Screenshot placeholder: main window -->*
 
 ## Quick Start
 
