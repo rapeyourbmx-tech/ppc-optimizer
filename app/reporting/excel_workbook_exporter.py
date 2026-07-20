@@ -11,18 +11,12 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from app.config import ThresholdConfiguration
 from app.core.workbook import WorkbookSheet
 from app.models.budget import BudgetAction, BudgetOptimizationReport
 from app.models.campaign import CampaignReport, MultiCampaignReport
 from app.models.product_decision import ProductDecision, ProductStatus
 
-_FONT_NAME = "Arial"
-_HEADER_FILL = PatternFill("solid", fgColor="1F3864")
-_HEADER_FONT = Font(name=_FONT_NAME, bold=True, color="FFFFFF", size=11)
-_TITLE_FONT = Font(name=_FONT_NAME, bold=True, size=16, color="1F3864")
-_SUBTITLE_FONT = Font(name=_FONT_NAME, size=10, color="808080")
-_BODY_FONT = Font(name=_FONT_NAME, size=11)
-_NOTE_FONT = Font(name=_FONT_NAME, size=11, italic=True, color="808080")
 _THIN_BORDER = Border(*[Side(style="thin", color="D9D9D9")] * 4)
 
 _FORMAT_MONEY = "#,##0.00"
@@ -77,9 +71,6 @@ _COLUMN_FORMATS: dict[str, str] = {
     "all_conversions": _FORMAT_CONVERSIONS,
     "all_conversion_value": _FORMAT_MONEY,
 }
-_TOP_LIST_SIZE = 10
-_MAX_COLUMN_WIDTH = 45.0
-_MIN_COLUMN_WIDTH = 9.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +96,22 @@ class _ProductsLayout:
 
 class ExcelWorkbookExporter:
     """Export an analyzed product report to a formatted Excel workbook."""
+
+    def __init__(self, configuration: ThresholdConfiguration | None = None) -> None:
+        """Initialize the exporter with Excel and dashboard settings."""
+        settings = configuration or ThresholdConfiguration()
+        self._excel = settings.excel
+        self._dashboard = settings.dashboard
+        font_name = self._excel.font_name
+        accent_color = self._dashboard.header_color
+        self._accent_color = accent_color
+        self._header_fill = PatternFill("solid", fgColor=accent_color)
+        self._header_font = Font(name=font_name, bold=True, color="FFFFFF", size=11)
+        self._title_font = Font(name=font_name, bold=True, size=16, color=accent_color)
+        self._subtitle_font = Font(name=font_name, size=10, color="808080")
+        self._body_font = Font(name=font_name, size=11)
+        self._note_font = Font(name=font_name, size=11, italic=True, color="808080")
+        self._font_name = font_name
 
     def export(
         self,
@@ -150,7 +157,7 @@ class ExcelWorkbookExporter:
         report: MultiCampaignReport,
     ) -> _ProductsLayout:
         """Write every original column plus decision columns, return the layout."""
-        sheet.sheet_properties.tabColor = "1F3864"
+        sheet.sheet_properties.tabColor = self._accent_color
         products = report.products
         source_columns = list(products.columns)
         headers = [
@@ -181,14 +188,14 @@ class ExcelWorkbookExporter:
             ):
                 cell = sheet.cell(row=row_number, column=column_offset + 1)
                 cell.value = None if pd.isna(value) else value
-                cell.font = _BODY_FONT
+                cell.font = self._body_font
                 cell.number_format = _COLUMN_FORMATS.get(column_name, "General")
 
             status_cell = sheet.cell(row=row_number, column=status_index)
             status_cell.value = str(decision.status)
             fill_color, font_color = _STATUS_STYLES[decision.status]
             status_cell.fill = PatternFill("solid", fgColor=fill_color)
-            status_cell.font = Font(name=_FONT_NAME, bold=True, color=font_color)
+            status_cell.font = Font(name=self._font_name, bold=True, color=font_color)
             status_cell.alignment = Alignment(horizontal="center")
 
             roas_cell = sheet.cell(row=row_number, column=roas_index)
@@ -196,14 +203,14 @@ class ExcelWorkbookExporter:
                 f"=IFERROR({revenue_letter}{row_number}/{cost_letter}{row_number},0)"
             )
             roas_cell.number_format = _FORMAT_PERCENT
-            roas_cell.font = _BODY_FONT
+            roas_cell.font = self._body_font
 
             recommendation_cell = sheet.cell(row=row_number, column=recommendation_index)
             recommendation_cell.value = _RECOMMENDATIONS[decision.status]
-            recommendation_cell.font = _BODY_FONT
+            recommendation_cell.font = self._body_font
             reason_cell = sheet.cell(row=row_number, column=reason_index)
             reason_cell.value = decision.reason
-            reason_cell.font = _BODY_FONT
+            reason_cell.font = self._body_font
 
         last_row = len(report.decisions) + 1
         last_letter = get_column_letter(len(headers))
@@ -219,7 +226,7 @@ class ExcelWorkbookExporter:
             roas_letter = get_column_letter(roas_index)
             sheet.conditional_formatting.add(
                 f"{roas_letter}2:{roas_letter}{last_row}",
-                _roas_color_scale(),
+                _roas_color_scale(self._dashboard.roas_color_scale_max),
             )
             sheet.conditional_formatting.add(
                 f"{cost_letter}2:{cost_letter}{last_row}",
@@ -249,11 +256,11 @@ class ExcelWorkbookExporter:
         budget: BudgetOptimizationReport | None,
     ) -> None:
         """Write KPI cards backed by formulas over the Products sheet."""
-        sheet.sheet_properties.tabColor = "1F3864"
+        sheet.sheet_properties.tabColor = self._accent_color
         sheet.sheet_view.showGridLines = False
         self._write_title(
             sheet,
-            title="PPC Optimizer — Campaign Dashboard",
+            title=self._dashboard.title,
             subtitle=(
                 f"Generated {date.today().isoformat()} · "
                 f"{report.overall_summary.total_products} products · "
@@ -268,14 +275,14 @@ class ExcelWorkbookExporter:
         status_range = layout.column_range(layout.status_column)
 
         top_cards = (
-            ("TOTAL PRODUCTS", f"=COUNTA({sku_range})", _FORMAT_INTEGER, "1F3864"),
-            ("TOTAL COST", f"=SUM({cost_range})", _FORMAT_MONEY, "1F3864"),
-            ("TOTAL REVENUE", f"=SUM({revenue_range})", _FORMAT_MONEY, "1F3864"),
+            ("TOTAL PRODUCTS", f"=COUNTA({sku_range})", _FORMAT_INTEGER, self._accent_color),
+            ("TOTAL COST", f"=SUM({cost_range})", _FORMAT_MONEY, self._accent_color),
+            ("TOTAL REVENUE", f"=SUM({revenue_range})", _FORMAT_MONEY, self._accent_color),
             (
                 "OVERALL ROAS",
                 f"=IFERROR(SUM({revenue_range})/SUM({cost_range}),0)",
                 _FORMAT_PERCENT,
-                "1F3864",
+                self._accent_color,
             ),
         )
         status_cards = tuple(
@@ -305,7 +312,7 @@ class ExcelWorkbookExporter:
                 _FORMAT_MONEY,
                 "1F4E79",
             ),
-            ("TOTAL CONVERSIONS", f"=SUM({conversions_range})", _FORMAT_CONVERSIONS, "1F3864"),
+            ("TOTAL CONVERSIONS", f"=SUM({conversions_range})", _FORMAT_CONVERSIONS, self._accent_color),
             ("CAMPAIGN HEALTH", report.overall_health, "General", "9C6500"),
         )
 
@@ -341,7 +348,9 @@ class ExcelWorkbookExporter:
     ) -> None:
         """Write the formula-backed campaign comparison table."""
         section_title = sheet.cell(row=anchor_row, column=2, value="Campaign Comparison")
-        section_title.font = Font(name=_FONT_NAME, bold=True, size=12, color="1F3864")
+        section_title.font = Font(
+            name=self._font_name, bold=True, size=12, color=self._accent_color
+        )
 
         headers = ("Campaign", "Products", "Cost", "Revenue", "ROAS", "Scale", "Pause", "Health")
         header_row = anchor_row + 1
@@ -387,7 +396,7 @@ class ExcelWorkbookExporter:
                 cell = sheet.cell(row=row_number, column=2 + column_offset)
                 cell.value = value
                 cell.number_format = number_format
-                cell.font = _BODY_FONT
+                cell.font = self._body_font
                 cell.border = _THIN_BORDER
 
     def _write_budget_optimization(
@@ -400,7 +409,9 @@ class ExcelWorkbookExporter:
     ) -> None:
         """Write the budget redistribution section of the dashboard."""
         section_title = sheet.cell(row=anchor_row, column=2, value="Budget Optimization")
-        section_title.font = Font(name=_FONT_NAME, bold=True, size=12, color="1F3864")
+        section_title.font = Font(
+            name=self._font_name, bold=True, size=12, color=self._accent_color
+        )
 
         headers = (
             "Campaign",
@@ -459,21 +470,21 @@ class ExcelWorkbookExporter:
                 cell = sheet.cell(row=row_number, column=2 + column_offset)
                 cell.value = value
                 cell.number_format = number_format
-                cell.font = _BODY_FONT
+                cell.font = self._body_font
                 cell.border = _THIN_BORDER
             action_cell = sheet.cell(row=row_number, column=5)
             action_cell.font = Font(
-                name=_FONT_NAME,
+                name=self._font_name,
                 bold=True,
                 color=_BUDGET_ACTION_COLORS[assessment.action],
             )
 
         total_row = header_row + 1 + len(budget.assessments)
         total_label = sheet.cell(row=total_row, column=2, value="Expected total gain")
-        total_label.font = Font(name=_FONT_NAME, bold=True)
+        total_label.font = Font(name=self._font_name, bold=True)
         total_cell = sheet.cell(row=total_row, column=7, value=budget.total_expected_gain)
         total_cell.number_format = '+#,##0.00;-#,##0.00;"—"'
-        total_cell.font = Font(name=_FONT_NAME, bold=True, color="006100")
+        total_cell.font = Font(name=self._font_name, bold=True, color="006100")
 
     def _write_kpi_card(
         self,
@@ -490,7 +501,7 @@ class ExcelWorkbookExporter:
         end_column = anchor_column + 2
         title_cell = sheet.cell(row=anchor_row, column=anchor_column)
         title_cell.value = title
-        title_cell.font = Font(name=_FONT_NAME, size=9, bold=True, color="808080")
+        title_cell.font = Font(name=self._font_name, size=9, bold=True, color="808080")
         title_cell.alignment = Alignment(horizontal="center", vertical="center")
         sheet.merge_cells(
             start_row=anchor_row,
@@ -502,7 +513,7 @@ class ExcelWorkbookExporter:
         value_cell = sheet.cell(row=anchor_row + 1, column=anchor_column)
         value_cell.value = value
         value_cell.number_format = number_format
-        value_cell.font = Font(name=_FONT_NAME, size=18, bold=True, color=accent_color)
+        value_cell.font = Font(name=self._font_name, size=18, bold=True, color=accent_color)
         value_cell.alignment = Alignment(horizontal="center", vertical="center")
         sheet.merge_cells(
             start_row=anchor_row + 1,
@@ -511,7 +522,7 @@ class ExcelWorkbookExporter:
             end_column=end_column,
         )
 
-        card_fill = PatternFill("solid", fgColor="F5F7FA")
+        card_fill = PatternFill("solid", fgColor=self._dashboard.card_fill_color)
         for row_number in range(anchor_row, anchor_row + 3):
             for column_number in range(anchor_column, end_column + 1):
                 cell = sheet.cell(row=row_number, column=column_number)
@@ -538,9 +549,9 @@ class ExcelWorkbookExporter:
         )
 
         health_label = sheet.cell(row=4, column=2, value="Campaign health")
-        health_label.font = Font(name=_FONT_NAME, bold=True, size=12)
+        health_label.font = Font(name=self._font_name, bold=True, size=12)
         health_value = sheet.cell(row=4, column=4, value=report.overall_health)
-        health_value.font = Font(name=_FONT_NAME, bold=True, size=12, color="9C6500")
+        health_value.font = Font(name=self._font_name, bold=True, size=12, color="9C6500")
 
         cost_range = layout.column_range(layout.cost_column)
         revenue_range = layout.column_range(layout.revenue_column)
@@ -569,9 +580,9 @@ class ExcelWorkbookExporter:
         for metric_offset, (label, value, number_format) in enumerate(metrics):
             row_number = metrics_start_row + metric_offset
             label_cell = sheet.cell(row=row_number, column=2, value=label)
-            label_cell.font = _BODY_FONT
+            label_cell.font = self._body_font
             value_cell = sheet.cell(row=row_number, column=4, value=value)
-            value_cell.font = Font(name=_FONT_NAME, bold=True)
+            value_cell.font = Font(name=self._font_name, bold=True)
             value_cell.number_format = number_format
             value_cell.alignment = Alignment(horizontal="right")
 
@@ -584,7 +595,7 @@ class ExcelWorkbookExporter:
             f"{campaigns_needing_attention} of {len(report.campaigns)} "
             "campaign(s) need attention."
         )
-        summary_cell.font = _NOTE_FONT
+        summary_cell.font = self._note_font
 
         actions_row = summary_row + 2
         actions_title = sheet.cell(
@@ -592,7 +603,7 @@ class ExcelWorkbookExporter:
             column=2,
             value="Recommended actions per campaign",
         )
-        actions_title.font = Font(name=_FONT_NAME, bold=True, size=12)
+        actions_title.font = Font(name=self._font_name, bold=True, size=12)
         current_row = actions_row + 1
         for campaign in report.campaigns:
             current_row = self._write_campaign_recommendations(sheet, campaign, current_row)
@@ -612,7 +623,7 @@ class ExcelWorkbookExporter:
     ) -> None:
         """Write the budget redistribution action plan."""
         title_cell = sheet.cell(row=anchor_row, column=2, value="Action Plan")
-        title_cell.font = Font(name=_FONT_NAME, bold=True, size=12)
+        title_cell.font = Font(name=self._font_name, bold=True, size=12)
         currency = self._detect_currency(report)
         currency_suffix = f" {currency}" if currency else ""
 
@@ -623,7 +634,7 @@ class ExcelWorkbookExporter:
                 "• No budget redistribution recommended — "
                 "the current allocation is balanced."
             )
-            note_cell.font = _BODY_FONT
+            note_cell.font = self._body_font
             return
 
         for transfer in budget.transfers:
@@ -632,21 +643,21 @@ class ExcelWorkbookExporter:
                 f"• Decrease {transfer.source_campaign} by "
                 f"{transfer.amount:,.2f}{currency_suffix}"
             )
-            decrease_cell.font = _BODY_FONT
+            decrease_cell.font = self._body_font
             increase_cell = sheet.cell(row=current_row + 1, column=2)
             increase_cell.value = (
                 f"• Increase {transfer.destination_campaign} by "
                 f"{transfer.amount:,.2f}{currency_suffix} "
                 f"(confidence {transfer.confidence:.0%})"
             )
-            increase_cell.font = _BODY_FONT
+            increase_cell.font = self._body_font
             current_row += 2
 
         gain_cell = sheet.cell(row=current_row + 1, column=2)
         gain_cell.value = (
             f"Expected monthly gain: +{budget.total_expected_gain:,.2f} revenue"
         )
-        gain_cell.font = Font(name=_FONT_NAME, bold=True, color="006100")
+        gain_cell.font = Font(name=self._font_name, bold=True, color="006100")
 
     @staticmethod
     def _detect_currency(report: MultiCampaignReport) -> str:
@@ -659,8 +670,8 @@ class ExcelWorkbookExporter:
 
         return ""
 
-    @staticmethod
     def _write_campaign_recommendations(
+        self,
         sheet: Worksheet,
         campaign: CampaignReport,
         start_row: int,
@@ -672,13 +683,13 @@ class ExcelWorkbookExporter:
             f"{metadata.name} ({metadata.campaign_type}, {metadata.source_file}) — "
             f"{campaign.health}"
         )
-        title_cell.font = Font(name=_FONT_NAME, bold=True, color="1F3864")
+        title_cell.font = Font(name=self._font_name, bold=True, color=self._accent_color)
 
         recommendations = campaign.report.audit_report.recommendations
         for recommendation_offset, recommendation in enumerate(recommendations, start=2):
             cell = sheet.cell(row=start_row + recommendation_offset, column=2)
             cell.value = f"• {recommendation}"
-            cell.font = _BODY_FONT
+            cell.font = self._body_font
 
         return start_row + len(recommendations) + 2
 
@@ -736,7 +747,7 @@ class ExcelWorkbookExporter:
             empty_message = "No products with spend and zero conversions."
         self._write_decision_table(
             sheet,
-            rows=selected[:_TOP_LIST_SIZE],
+            rows=selected[:self._excel.top_list_size],
             empty_message=empty_message,
         )
 
@@ -791,17 +802,17 @@ class ExcelWorkbookExporter:
                 cell = sheet.cell(row=row_number, column=column_offset + 1)
                 cell.value = value
                 cell.number_format = number_format
-                cell.font = _BODY_FONT
+                cell.font = self._body_font
 
         last_row = len(rows) + 1
         sheet.freeze_panes = "A2"
         sheet.auto_filter.ref = f"A1:I{max(last_row, 1)}"
         if rows:
-            sheet.conditional_formatting.add(f"H2:H{last_row}", _roas_color_scale())
+            sheet.conditional_formatting.add(f"H2:H{last_row}", _roas_color_scale(self._dashboard.roas_color_scale_max))
             sheet.conditional_formatting.add(f"E2:E{last_row}", _cost_data_bar())
         else:
             note_cell = sheet.cell(row=2, column=1, value=empty_message)
-            note_cell.font = _NOTE_FONT
+            note_cell.font = self._note_font
         self._auto_fit_columns(sheet, formula_width=10.0)
 
     # ------------------------------------------------------------------
@@ -829,8 +840,8 @@ class ExcelWorkbookExporter:
 
         return column_name.replace("_", " ").strip().capitalize()
 
-    @staticmethod
     def _write_header_row(
+        self,
         sheet: Worksheet,
         headers: tuple[str, ...] | list[str],
         *,
@@ -840,18 +851,17 @@ class ExcelWorkbookExporter:
         """Write one styled header row."""
         for column_offset, header in enumerate(headers):
             cell = sheet.cell(row=row, column=start_column + column_offset, value=header)
-            cell.fill = _HEADER_FILL
-            cell.font = _HEADER_FONT
+            cell.fill = self._header_fill
+            cell.font = self._header_font
             cell.alignment = Alignment(horizontal="center", vertical="center")
         sheet.row_dimensions[row].height = 22.0
 
-    @staticmethod
-    def _write_title(sheet: Worksheet, *, title: str, subtitle: str) -> None:
+    def _write_title(self, sheet: Worksheet, *, title: str, subtitle: str) -> None:
         """Write the sheet title and subtitle rows."""
         title_cell = sheet.cell(row=1, column=2, value=title)
-        title_cell.font = _TITLE_FONT
+        title_cell.font = self._title_font
         subtitle_cell = sheet.cell(row=2, column=2, value=subtitle)
-        subtitle_cell.font = _SUBTITLE_FONT
+        subtitle_cell.font = self._subtitle_font
 
     @staticmethod
     def _apply_status_row_formatting(
@@ -870,8 +880,7 @@ class ExcelWorkbookExporter:
                 ),
             )
 
-    @staticmethod
-    def _auto_fit_columns(sheet: Worksheet, *, formula_width: float) -> None:
+    def _auto_fit_columns(self, sheet: Worksheet, *, formula_width: float) -> None:
         """Size every column to its longest value within sensible bounds."""
         for column_cells in sheet.columns:
             lengths = [formula_width]
@@ -885,11 +894,11 @@ class ExcelWorkbookExporter:
                     continue
                 lengths.append(float(len(text)) + 2.0)
             if column_letter is not None:
-                width = min(max(max(lengths), _MIN_COLUMN_WIDTH), _MAX_COLUMN_WIDTH)
+                width = min(max(max(lengths), self._excel.min_column_width), self._excel.max_column_width)
                 sheet.column_dimensions[column_letter].width = width
 
 
-def _roas_color_scale() -> ColorScaleRule:
+def _roas_color_scale(maximum: float) -> ColorScaleRule:
     """Return the red-to-green color scale used for ROAS columns."""
     return ColorScaleRule(
         start_type="num",
@@ -899,7 +908,7 @@ def _roas_color_scale() -> ColorScaleRule:
         mid_value=1,
         mid_color="FFEB84",
         end_type="num",
-        end_value=10,
+        end_value=maximum,
         end_color="63BE7B",
     )
 

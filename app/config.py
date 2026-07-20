@@ -57,6 +57,33 @@ class DecisionThresholds(_StrictModel):
     keep: KeepThresholds = KeepThresholds()
 
 
+class AuditThresholds(_StrictModel):
+    """Thresholds used by the campaign audit engine."""
+
+    profitable_roas: float = 500.0
+    high_roas: float = 1200.0
+    low_ctr: float = 1.0
+
+
+class ExcelSettings(_StrictModel):
+    """Workbook-wide Excel rendering settings."""
+
+    font_name: str = "Arial"
+    min_column_width: float = 9.0
+    max_column_width: float = 45.0
+    top_list_size: int = 10
+    output_file: str = "report.xlsx"
+
+
+class DashboardSettings(_StrictModel):
+    """Dashboard sheet rendering settings."""
+
+    title: str = "PPC Optimizer — Campaign Dashboard"
+    header_color: str = "1F3864"
+    card_fill_color: str = "F5F7FA"
+    roas_color_scale_max: float = 10.0
+
+
 class BudgetThresholds(_StrictModel):
     """Thresholds driving budget redistribution recommendations."""
 
@@ -82,6 +109,9 @@ class ThresholdConfiguration(_StrictModel):
     watch: WatchThresholds = WatchThresholds()
     keep: KeepThresholds = KeepThresholds()
     budget: BudgetThresholds = BudgetThresholds()
+    audit: AuditThresholds = AuditThresholds()
+    excel: ExcelSettings = ExcelSettings()
+    dashboard: DashboardSettings = DashboardSettings()
     campaigns: dict[str, CampaignThresholds] = Field(default_factory=dict)
 
     def base_thresholds(self) -> DecisionThresholds:
@@ -226,3 +256,7 @@ def _parse_configuration(config_path: Path) -> object:
 
     message = "Only YAML (.yaml, .yml) and JSON (.json) configuration files are supported."
     raise ConfigurationError(message)
+
+
+# The configuration now covers the whole application, not only thresholds.
+AppConfiguration = ThresholdConfiguration

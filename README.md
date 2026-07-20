@@ -67,7 +67,15 @@ python main.py path\to\product_report.csv
 
 ## Configuration
 
-Decision thresholds live in `config.yaml` in the project root and can be
+The whole application is configured through `config.yaml` in the project
+root: decision thresholds, per-campaign overrides, budget optimization,
+audit thresholds (`audit`), Excel rendering (`excel`: font, column widths,
+top-list size, default output file), and dashboard rendering
+(`dashboard`: title, colors, ROAS color scale). The configuration is
+loaded once on startup and injected into every service; there are no
+hardcoded thresholds in the code.
+
+Decision thresholds can be
 edited without touching the code. A custom YAML or JSON file can be passed
 with `--config`:
 

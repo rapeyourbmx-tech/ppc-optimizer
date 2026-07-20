@@ -25,17 +25,23 @@ def run(
     *,
     explain: bool = False,
     config_path: Path | None = None,
-    output_path: Path = Path("report.xlsx"),
+    output_path: Path | None = None,
 ) -> int:
-    """Analyze one or more reports, export the workbook, print a summary."""
+    """Analyze one or more reports, export the workbook, print a summary.
+
+    The configuration is loaded once here and injected into every service.
+    When no output path is given, the workbook path comes from the
+    configuration's excel.output_file setting.
+    """
     source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
 
     try:
         configuration = load_configuration(config_path)
+        resolved_output = output_path or Path(configuration.excel.output_file)
         analyzer = MultiCampaignAnalyzer(configuration=configuration, pipeline=pipeline)
         report = analyzer.analyze(source_paths)
         budget = BudgetOptimizer(configuration).optimize(report)
-        ExcelWorkbookExporter().export(report, output_path, budget)
+        ExcelWorkbookExporter(configuration).export(report, resolved_output, budget)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
         return 2
@@ -44,7 +50,7 @@ def run(
         return 1
 
     typer.echo(_console_summary(report))
-    typer.echo(f"Report saved: {output_path}")
+    typer.echo(f"Report saved: {resolved_output}")
     if explain:
         typer.echo(_decision_explanations(report.decisions))
     return 0
@@ -67,9 +73,12 @@ def main(
         ),
     ] = None,
     output_path: Annotated[
-        Path,
-        typer.Option("--output", help="Path of the generated Excel workbook."),
-    ] = Path("report.xlsx"),
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Path of the workbook (default: excel.output_file from config).",
+        ),
+    ] = None,
 ) -> None:
     """Accept report paths and exit with the pipeline status code."""
     exit_code = run(

@@ -144,3 +144,35 @@ def test_load_configuration_rejects_unknown_campaign_keys(tmp_path: Path) -> Non
 
     with pytest.raises(ConfigurationError, match="Invalid threshold configuration"):
         load_configuration(config_path)
+
+
+def test_load_configuration_reads_audit_excel_and_dashboard_sections(
+    tmp_path: Path,
+) -> None:
+    """Audit, Excel, and dashboard settings load from the configuration file."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "audit:\n  low_ctr: 2.5\n"
+        "excel:\n  font_name: Calibri\n  top_list_size: 5\n"
+        "dashboard:\n  title: My Dashboard\n  header_color: '336699'\n",
+        encoding="utf-8",
+    )
+
+    configuration = load_configuration(config_path)
+
+    assert configuration.audit.low_ctr == 2.5
+    assert configuration.audit.profitable_roas == 500.0
+    assert configuration.excel.font_name == "Calibri"
+    assert configuration.excel.top_list_size == 5
+    assert configuration.excel.output_file == "report.xlsx"
+    assert configuration.dashboard.title == "My Dashboard"
+    assert configuration.dashboard.header_color == "336699"
+
+
+def test_load_configuration_rejects_unknown_settings_keys(tmp_path: Path) -> None:
+    """Misspelled keys in the settings sections produce an informative error."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text("excel:\n  font: Calibri\n", encoding="utf-8")
+
+    with pytest.raises(ConfigurationError, match="Invalid threshold configuration"):
+        load_configuration(config_path)

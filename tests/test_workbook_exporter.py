@@ -122,3 +122,42 @@ def test_dashboard_kpis_are_formula_backed(exported_workbook_path: Path) -> None
     assert any("COUNTA(Products!" in formula for formula in formulas)
     assert any('COUNTIF(' in formula and '"KEEP"' in formula for formula in formulas)
     assert any("SUMIFS(" in formula and '"PAUSE"' in formula for formula in formulas)
+
+
+def test_exporter_applies_excel_and_dashboard_settings(tmp_path: Path) -> None:
+    """Custom font, dashboard title, and top-list size come from configuration."""
+    from app.config import ThresholdConfiguration
+
+    source_path = tmp_path / "product_report.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item ID": f"WIN-{index}",
+                "Item title": f"Winner {index}",
+                "Impressions": 5000,
+                "Clicks": 30,
+                "Cost": 350.0,
+                "Conversions": 3.0,
+                "Conversion Value": 40000.0 + index,
+            }
+            for index in range(3)
+        ]
+    ).to_csv(source_path, index=False)
+    configuration = ThresholdConfiguration.model_validate(
+        {
+            "excel": {"font_name": "Calibri", "top_list_size": 1},
+            "dashboard": {"title": "Custom Title"},
+        }
+    )
+    report = MultiCampaignAnalyzer(configuration=configuration).analyze([source_path])
+    output_path = tmp_path / "report.xlsx"
+
+    ExcelWorkbookExporter(configuration).export(report, output_path)
+
+    workbook = load_workbook(output_path)
+    dashboard = workbook[str(WorkbookSheet.DASHBOARD)]
+    winners = workbook[str(WorkbookSheet.TOP_WINNERS)]
+    assert dashboard.cell(row=1, column=2).value == "Custom Title"
+    assert dashboard.cell(row=1, column=2).font.name == "Calibri"
+    assert winners.cell(row=2, column=1).value is not None
+    assert winners.cell(row=3, column=1).value is None

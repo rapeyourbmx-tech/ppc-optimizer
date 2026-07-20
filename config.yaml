@@ -47,3 +47,24 @@ budget:
   decrease_efficiency: 3     # marginal efficiency at or below -> DECREASE
   shift_share: 0.15          # move this share of a DECREASE campaign's spend
   confidence_conversions: 30 # conversions needed for 100% confidence
+
+# Campaign audit thresholds (used by the audit engine).
+audit:
+  profitable_roas: 500   # ROAS in percent at or above which a product is profitable
+  high_roas: 1200        # ROAS in percent above which a product is high-ROAS
+  low_ctr: 1.0           # CTR in percent below which a product is low-CTR
+
+# Excel workbook rendering settings.
+excel:
+  font_name: Arial
+  min_column_width: 9
+  max_column_width: 45
+  top_list_size: 10          # rows in Top Winners / Top Losers
+  output_file: report.xlsx   # default workbook path (overridden by --output)
+
+# Dashboard sheet rendering settings.
+dashboard:
+  title: "PPC Optimizer — Campaign Dashboard"
+  header_color: "1F3864"
+  card_fill_color: "F5F7FA"
+  roas_color_scale_max: 10   # ROAS (x) mapped to the greenest color

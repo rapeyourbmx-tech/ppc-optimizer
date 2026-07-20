@@ -2,6 +2,7 @@
 
 import pandas as pd
 
+from app.config import AuditThresholds
 from app.models.audit_report import AuditReport
 from app.models.campaign_summary import CampaignSummary
 from app.models.product_decision import ProductDecision
@@ -20,9 +21,9 @@ from app.utils.report_columns import (
 class AuditEngine:
     """Analyze all report products and produce practical recommendations."""
 
-    _PROFITABLE_ROAS_THRESHOLD: float = 500.0
-    _HIGH_ROAS_THRESHOLD: float = 1200.0
-    _LOW_CTR_THRESHOLD: float = 1.0
+    def __init__(self, thresholds: AuditThresholds | None = None) -> None:
+        """Initialize the engine with configurable audit thresholds."""
+        self._thresholds = thresholds or AuditThresholds()
 
     def audit(self, products: pd.DataFrame, summary: CampaignSummary) -> AuditReport:
         """Audit all products and return a plain-Python report.
@@ -65,9 +66,9 @@ class AuditEngine:
         without_impressions = impressions == 0
         without_clicks = (impressions > 0) & (clicks == 0)
         clicks_no_sales = (clicks > 0) & (conversions == 0)
-        profitable = roas >= self._PROFITABLE_ROAS_THRESHOLD
-        high_roas = roas > self._HIGH_ROAS_THRESHOLD
-        low_ctr = (impressions > 0) & (ctr < self._LOW_CTR_THRESHOLD)
+        profitable = roas >= self._thresholds.profitable_roas
+        high_roas = roas > self._thresholds.high_roas
+        low_ctr = (impressions > 0) & (ctr < self._thresholds.low_ctr)
         expensive_clicks = (clicks > 0) & (cpc > average_cpc)
 
         budget_waste = cost.loc[clicks_no_sales].sum()

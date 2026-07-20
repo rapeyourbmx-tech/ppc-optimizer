@@ -28,9 +28,12 @@ def analyze(
         ),
     ] = None,
     output_path: Annotated[
-        Path,
-        typer.Option("--output", help="Path of the generated Excel workbook."),
-    ] = Path("report.xlsx"),
+        Path | None,
+        typer.Option(
+            "--output",
+            help="Path of the workbook (default: excel.output_file from config).",
+        ),
+    ] = None,
 ) -> None:
     """Analyze one CSV or XLSX Google Ads product report."""
     exit_code = run(

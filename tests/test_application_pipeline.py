@@ -125,3 +125,37 @@ def test_run_applies_custom_threshold_configuration(
     assert strict_exit_code == 0
     assert "Watch: 1 | Pause: 0" in default_output
     assert "Watch: 0 | Pause: 1" in strict_output
+
+
+def test_run_uses_output_file_from_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Without --output the workbook path comes from excel.output_file."""
+    monkeypatch.chdir(tmp_path)
+    source_path = tmp_path / "product_report.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item ID": "CFG-1",
+                "Impressions": 1000,
+                "Clicks": 10,
+                "Cost": 350.0,
+                "Conversions": 2.0,
+                "Conversion Value": 700.0,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "excel:\n  output_file: configured.xlsx\n",
+        encoding="utf-8",
+    )
+
+    exit_code = run(source_path, config_path=config_path)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert (tmp_path / "configured.xlsx").is_file()
+    assert "Report saved: configured.xlsx" in captured.out

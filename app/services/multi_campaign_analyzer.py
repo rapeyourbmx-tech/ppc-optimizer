@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.analyzers.audit_engine import AuditEngine
 from app.analyzers.product_analyzer import ProductAnalyzer
 from app.config import ThresholdConfiguration
 from app.models.campaign import (
@@ -99,7 +100,10 @@ class MultiCampaignAnalyzer:
             return self._shared_pipeline
 
         thresholds = self._configuration.thresholds_for_campaign(campaign_name)
-        return ApplicationPipeline(product_analyzer=ProductAnalyzer(thresholds=thresholds))
+        return ApplicationPipeline(
+            product_analyzer=ProductAnalyzer(thresholds=thresholds),
+            audit_engine=AuditEngine(thresholds=self._configuration.audit),
+        )
 
 
 def _derive_campaign_metadata(source_path: Path) -> CampaignMetadata:
