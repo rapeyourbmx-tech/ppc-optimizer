@@ -10,6 +10,7 @@ from main import run
 app = typer.Typer(
     help="Analyze Google Ads product reports.",
     no_args_is_help=True,
+    pretty_exceptions_enable=False,
 )
 
 

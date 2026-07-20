@@ -94,8 +94,9 @@ python main.py --version                 # print the application version
 ```
 
 Options are grouped in `--help` (Input & Output, Modes, Diagnostics).
-Exit codes: 0 success, 1 validation or unexpected failure, 2 input or
-configuration error.
+Errors are printed as friendly messages (with Expected/Found suggestions
+for misspelled columns), never as Python tracebacks. Exit codes:
+0 success, 1 validation error, 2 configuration error, 3 internal error.
 
 ## Multiple campaigns
 

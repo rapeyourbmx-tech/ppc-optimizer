@@ -55,9 +55,11 @@ def test_run_returns_input_error_for_missing_file(
     exit_code = run(tmp_path / "missing.csv")
 
     captured = capsys.readouterr()
-    assert exit_code == 2
+    assert exit_code == 1
     assert captured.out == ""
-    assert captured.err.startswith("Error:")
+    assert captured.err.startswith("ERROR")
+    assert "File not found" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_run_with_explain_prints_decision_blocks(

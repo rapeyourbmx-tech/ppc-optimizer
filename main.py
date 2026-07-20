@@ -13,6 +13,7 @@ from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
 from app.services.budget_optimizer import BudgetOptimizer
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
+from app.services.error_presenter import present_error
 from app.services.report_validator import ReportValidator
 from app.version import APP_NAME, __version__
 
@@ -36,9 +37,9 @@ def run(
 
     The configuration is loaded once here and injected into every service.
     When no output path is given, the workbook path comes from the
-    configuration's excel.output_file setting. Exit codes: 0 on success,
-    1 on validation or unexpected failure, 2 on input or configuration
-    errors.
+    configuration's excel.output_file setting. Exit codes: 0 success,
+    1 validation error, 2 configuration error, 3 internal error. Errors
+    are printed as friendly messages, never as Python tracebacks.
     """
     source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
 
@@ -57,12 +58,10 @@ def run(
         if not dry_run:
             _progress(verbose, "Generating workbook...")
             ExcelWorkbookExporter(configuration).export(report, resolved_output, budget)
-    except (OSError, ValueError) as error:
-        typer.echo(f"Error: {error}", err=True)
-        return 2
-    except Exception as error:
-        typer.echo(f"Unexpected error: {error}", err=True)
-        return 1
+    except Exception as error:  # noqa: BLE001 — classified by the presenter
+        exit_code, message = present_error(error)
+        typer.echo(message, err=True)
+        return exit_code
 
     typer.echo(_console_summary(report))
     if not dry_run:
@@ -103,13 +102,13 @@ def _version_callback(value: bool) -> None:
         raise typer.Exit()
 
 
-application = typer.Typer(add_completion=False)
+application = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
 
 @application.command(
     epilog=(
-        "Exit codes: 0 success | 1 validation or unexpected failure | "
-        "2 input or configuration error."
+        "Exit codes: 0 success | 1 validation error | "
+        "2 configuration error | 3 internal error."
     ),
 )
 def main(

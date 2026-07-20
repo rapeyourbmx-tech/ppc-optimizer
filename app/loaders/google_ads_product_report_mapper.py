@@ -33,6 +33,22 @@ class GoogleAdsProductReportMappingError(ValueError):
     """Raised when a Google Ads Product export cannot be mapped safely."""
 
 
+class MissingColumnsError(GoogleAdsProductReportMappingError):
+    """Raised when required columns are absent, with data for friendly output."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        missing_columns: list[str],
+        available_columns: list[str],
+    ) -> None:
+        """Store the missing canonical columns and the file's actual headers."""
+        super().__init__(message)
+        self.missing_columns = missing_columns
+        self.available_columns = available_columns
+
+
 class GoogleAdsProductReportMapper:
     """Map English and Ukrainian Google Ads export headers to one schema."""
 
@@ -84,11 +100,12 @@ class GoogleAdsProductReportMapper:
 
     def map(self, report: pd.DataFrame) -> pd.DataFrame:
         """Normalize and map a Google Ads Product export to the internal schema."""
+        original_columns = [str(column) for column in report.columns]
         normalized_report = normalize_column_names(report)
         mapped_report = normalized_report.rename(columns=self._rename_columns())
 
         self._validate_unique_columns(mapped_report)
-        self._validate_required_columns(mapped_report)
+        self._validate_required_columns(mapped_report, original_columns)
         return mapped_report.loc[:, self._ordered_columns(mapped_report)]
 
     def _rename_columns(self) -> dict[str, str]:
@@ -107,7 +124,11 @@ class GoogleAdsProductReportMapper:
             message = f"Multiple export columns map to the same internal fields: {names}."
             raise GoogleAdsProductReportMappingError(message)
 
-    def _validate_required_columns(self, report: pd.DataFrame) -> None:
+    def _validate_required_columns(
+        self,
+        report: pd.DataFrame,
+        original_columns: list[str],
+    ) -> None:
         """Ensure the report has the metrics required by the application pipeline."""
         missing_columns = sorted(set(_REQUIRED_COLUMNS) - set(report.columns))
         if missing_columns:
@@ -116,7 +137,11 @@ class GoogleAdsProductReportMapper:
                 "The file is not a complete Google Ads Product report. "
                 f"Missing required columns: {names}."
             )
-            raise GoogleAdsProductReportMappingError(message)
+            raise MissingColumnsError(
+                message,
+                missing_columns=missing_columns,
+                available_columns=original_columns,
+            )
 
     def _ordered_columns(self, report: pd.DataFrame) -> list[str]:
         """Place recognized columns in canonical schema order before extras."""
