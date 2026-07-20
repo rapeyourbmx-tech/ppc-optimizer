@@ -6,7 +6,6 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-
 DEFAULT_CONFIG_FILENAMES: tuple[str, ...] = ("config.yaml", "config.yml", "config.json")
 _YAML_SUFFIXES: frozenset[str] = frozenset({".yaml", ".yml"})
 _JSON_SUFFIX = ".json"
@@ -146,9 +145,7 @@ class ThresholdConfiguration(_StrictModel):
             ),
             scale=ScaleThresholds(
                 min_roas=(
-                    override.scale_roas
-                    if override.scale_roas is not None
-                    else self.scale.min_roas
+                    override.scale_roas if override.scale_roas is not None else self.scale.min_roas
                 ),
                 min_conversion_value=self.scale.min_conversion_value,
             ),
@@ -165,17 +162,11 @@ class ThresholdConfiguration(_StrictModel):
     def _matching_override(self, campaign_name: str) -> CampaignThresholds | None:
         """Return the campaign override matching one campaign name."""
         lowered_name = campaign_name.casefold()
-        normalized = {
-            key.casefold(): override for key, override in self.campaigns.items()
-        }
+        normalized = {key.casefold(): override for key, override in self.campaigns.items()}
         if lowered_name in normalized:
             return normalized[lowered_name]
 
-        matches = [
-            (key, override)
-            for key, override in normalized.items()
-            if key in lowered_name
-        ]
+        matches = [(key, override) for key, override in normalized.items() if key in lowered_name]
         if not matches:
             return None
 

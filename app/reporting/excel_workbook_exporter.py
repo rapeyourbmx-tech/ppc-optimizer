@@ -88,10 +88,7 @@ class _ProductsLayout:
 
     def column_range(self, column_letter: str) -> str:
         """Return an absolute Products-sheet range for one column."""
-        return (
-            f"Products!${column_letter}${self.first_row}:"
-            f"${column_letter}${self.last_row}"
-        )
+        return f"Products!${column_letter}${self.first_row}:${column_letter}${self.last_row}"
 
 
 class ExcelWorkbookExporter:
@@ -199,9 +196,7 @@ class ExcelWorkbookExporter:
             status_cell.alignment = Alignment(horizontal="center")
 
             roas_cell = sheet.cell(row=row_number, column=roas_index)
-            roas_cell.value = (
-                f"=IFERROR({revenue_letter}{row_number}/{cost_letter}{row_number},0)"
-            )
+            roas_cell.value = f"=IFERROR({revenue_letter}{row_number}/{cost_letter}{row_number},0)"
             roas_cell.number_format = _FORMAT_PERCENT
             roas_cell.font = self._body_font
 
@@ -312,7 +307,12 @@ class ExcelWorkbookExporter:
                 _FORMAT_MONEY,
                 "1F4E79",
             ),
-            ("TOTAL CONVERSIONS", f"=SUM({conversions_range})", _FORMAT_CONVERSIONS, self._accent_color),
+            (
+                "TOTAL CONVERSIONS",
+                f"=SUM({conversions_range})",
+                _FORMAT_CONVERSIONS,
+                self._accent_color,
+            ),
             ("CAMPAIGN HEALTH", report.overall_health, "General", "9C6500"),
         )
 
@@ -370,14 +370,8 @@ class ExcelWorkbookExporter:
                 f"=SUMIFS({cost_range},{campaign_range},{name_criterion})",
                 f"=SUMIFS({revenue_range},{campaign_range},{name_criterion})",
                 f"=IFERROR(E{row_number}/D{row_number},0)",
-                (
-                    f'=COUNTIFS({campaign_range},{name_criterion},'
-                    f'{status_range},"SCALE")'
-                ),
-                (
-                    f'=COUNTIFS({campaign_range},{name_criterion},'
-                    f'{status_range},"PAUSE")'
-                ),
+                (f'=COUNTIFS({campaign_range},{name_criterion},{status_range},"SCALE")'),
+                (f'=COUNTIFS({campaign_range},{name_criterion},{status_range},"PAUSE")'),
                 campaign.health,
             )
             formats = (
@@ -427,9 +421,7 @@ class ExcelWorkbookExporter:
         campaign_range = layout.column_range(layout.campaign_column)
         cost_range = layout.column_range(layout.cost_column)
         revenue_range = layout.column_range(layout.revenue_column)
-        moved_out = {
-            transfer.source_campaign: transfer.amount for transfer in budget.transfers
-        }
+        moved_out = {transfer.source_campaign: transfer.amount for transfer in budget.transfers}
         moved_in: dict[str, float] = {}
         gains: dict[str, float] = {}
         for transfer in budget.transfers:
@@ -438,7 +430,8 @@ class ExcelWorkbookExporter:
             )
             gains[transfer.source_campaign] = transfer.expected_revenue_increase
 
-        for assessment_offset, assessment in enumerate(budget.assessments):
+        assessments = budget.assessments
+        for assessment_offset, assessment in enumerate(assessments):
             row_number = header_row + 1 + assessment_offset
             escaped_name = assessment.campaign_name.replace('"', '""')
             name_criterion = f'"{escaped_name}"'
@@ -557,7 +550,11 @@ class ExcelWorkbookExporter:
         revenue_range = layout.column_range(layout.revenue_column)
         status_range = layout.column_range(layout.status_column)
         metrics: tuple[tuple[str, object, str], ...] = (
-            ("Products analyzed", f"=COUNTA({layout.column_range(layout.sku_column)})", _FORMAT_INTEGER),
+            (
+                "Products analyzed",
+                f"=COUNTA({layout.column_range(layout.sku_column)})",
+                _FORMAT_INTEGER,
+            ),
             ("Total advertising cost", f"=SUM({cost_range})", _FORMAT_MONEY),
             ("Total conversion value", f"=SUM({revenue_range})", _FORMAT_MONEY),
             (
@@ -592,8 +589,7 @@ class ExcelWorkbookExporter:
         summary_row = metrics_start_row + len(metrics) + 1
         summary_cell = sheet.cell(row=summary_row, column=2)
         summary_cell.value = (
-            f"{campaigns_needing_attention} of {len(report.campaigns)} "
-            "campaign(s) need attention."
+            f"{campaigns_needing_attention} of {len(report.campaigns)} campaign(s) need attention."
         )
         summary_cell.font = self._note_font
 
@@ -631,8 +627,7 @@ class ExcelWorkbookExporter:
         if not budget.transfers:
             note_cell = sheet.cell(row=current_row, column=2)
             note_cell.value = (
-                "• No budget redistribution recommended — "
-                "the current allocation is balanced."
+                "• No budget redistribution recommended — the current allocation is balanced."
             )
             note_cell.font = self._body_font
             return
@@ -640,8 +635,7 @@ class ExcelWorkbookExporter:
         for transfer in budget.transfers:
             decrease_cell = sheet.cell(row=current_row, column=2)
             decrease_cell.value = (
-                f"• Decrease {transfer.source_campaign} by "
-                f"{transfer.amount:,.2f}{currency_suffix}"
+                f"• Decrease {transfer.source_campaign} by {transfer.amount:,.2f}{currency_suffix}"
             )
             decrease_cell.font = self._body_font
             increase_cell = sheet.cell(row=current_row + 1, column=2)
@@ -654,9 +648,7 @@ class ExcelWorkbookExporter:
             current_row += 2
 
         gain_cell = sheet.cell(row=current_row + 1, column=2)
-        gain_cell.value = (
-            f"Expected monthly gain: +{budget.total_expected_gain:,.2f} revenue"
-        )
+        gain_cell.value = f"Expected monthly gain: +{budget.total_expected_gain:,.2f} revenue"
         gain_cell.font = Font(name=self._font_name, bold=True, color="006100")
 
     @staticmethod
@@ -705,11 +697,7 @@ class ExcelWorkbookExporter:
         """Write every decision of one status into its own sheet."""
         fill_color, font_color = _STATUS_STYLES[status]
         sheet.sheet_properties.tabColor = fill_color
-        decisions = [
-            row
-            for row in self._decision_rows(report)
-            if row[0].status is status
-        ]
+        decisions = [row for row in self._decision_rows(report) if row[0].status is status]
         self._write_decision_table(
             sheet,
             rows=decisions,
@@ -736,18 +724,14 @@ class ExcelWorkbookExporter:
         else:
             sheet.sheet_properties.tabColor = "9C0006"
             selected = sorted(
-                (
-                    pair
-                    for pair in paired
-                    if pair[0].conversions == 0 and pair[0].cost > 0
-                ),
+                (pair for pair in paired if pair[0].conversions == 0 and pair[0].cost > 0),
                 key=lambda pair: pair[0].cost,
                 reverse=True,
             )
             empty_message = "No products with spend and zero conversions."
         self._write_decision_table(
             sheet,
-            rows=selected[:self._excel.top_list_size],
+            rows=selected[: self._excel.top_list_size],
             empty_message=empty_message,
         )
 
@@ -808,7 +792,9 @@ class ExcelWorkbookExporter:
         sheet.freeze_panes = "A2"
         sheet.auto_filter.ref = f"A1:I{max(last_row, 1)}"
         if rows:
-            sheet.conditional_formatting.add(f"H2:H{last_row}", _roas_color_scale(self._dashboard.roas_color_scale_max))
+            sheet.conditional_formatting.add(
+                f"H2:H{last_row}", _roas_color_scale(self._dashboard.roas_color_scale_max)
+            )
             sheet.conditional_formatting.add(f"E2:E{last_row}", _cost_data_bar())
         else:
             note_cell = sheet.cell(row=2, column=1, value=empty_message)
@@ -894,7 +880,9 @@ class ExcelWorkbookExporter:
                     continue
                 lengths.append(float(len(text)) + 2.0)
             if column_letter is not None:
-                width = min(max(max(lengths), self._excel.min_column_width), self._excel.max_column_width)
+                width = min(
+                    max(max(lengths), self._excel.min_column_width), self._excel.max_column_width
+                )
                 sheet.column_dimensions[column_letter].width = width
 
 

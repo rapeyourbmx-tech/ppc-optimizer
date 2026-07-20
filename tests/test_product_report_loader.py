@@ -14,8 +14,9 @@ from app.loaders.product_report_loader import (
     UnsupportedReportFormatError,
 )
 
-
 FIXTURES_DIRECTORY = Path(__file__).parent / "fixtures"
+
+
 @pytest.fixture
 def ukrainian_xlsx_report(tmp_path: Path) -> Path:
     """Create a Ukrainian Google Ads XLSX export fixture."""
@@ -130,7 +131,7 @@ def test_load_unwraps_fully_quoted_data_rows() -> None:
 
 
 def test_load_maps_item_and_title_ukrainian_header_variants() -> None:
-    """"Ідентифікатор елемента" and "Назва" map to product_id and product."""
+    """ "Ідентифікатор елемента" and "Назва" map to product_id and product."""
     source_path = FIXTURES_DIRECTORY / "google_ads_product_uk_wrapped.csv"
 
     report = GoogleAdsProductReportLoader().load(source_path)

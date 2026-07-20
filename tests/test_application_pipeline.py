@@ -91,9 +91,7 @@ def test_run_with_explain_prints_decision_blocks(
         "Reason:\n"
         "Cost = 450\n"
         "Clicks = 104\n"
-        "Conversions = 0\n"
-        + "-" * 32
-        + "\n"
+        "Conversions = 0\n" + "-" * 32 + "\n"
     )
 
 
@@ -120,7 +118,9 @@ def test_run_applies_custom_threshold_configuration(
 
     default_exit_code = run(source_path, output_path=tmp_path / "report.xlsx")
     default_output = capsys.readouterr().out
-    strict_exit_code = run(source_path, config_path=config_path, output_path=tmp_path / "report.xlsx")
+    strict_exit_code = run(
+        source_path, config_path=config_path, output_path=tmp_path / "report.xlsx"
+    )
     strict_output = capsys.readouterr().out
 
     assert default_exit_code == 0

@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 from openpyxl import load_workbook
 
-from app.config import ThresholdConfiguration, load_configuration
+from app.config import ThresholdConfiguration
 from app.models.budget import BudgetAction
 from app.services.budget_optimizer import BudgetOptimizer
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer

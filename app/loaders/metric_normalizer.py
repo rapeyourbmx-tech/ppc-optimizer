@@ -4,7 +4,6 @@ import re
 
 import pandas as pd
 
-
 _METRIC_COLUMNS: tuple[str, ...] = (
     "clicks",
     "impressions",

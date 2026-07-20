@@ -9,7 +9,7 @@ your budget.
 ![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)
 
 ![Dashboard](docs/screenshots/dashboard.png)
-*<!-- TODO: add a screenshot of the Dashboard sheet -->*
+*<!-- Screenshot placeholder: Dashboard sheet -->*
 
 ---
 
@@ -184,7 +184,7 @@ never Python tracebacks.
 ## Output workbook
 
 ![Executive Summary](docs/screenshots/executive-summary.png)
-*<!-- TODO: add a screenshot of the Executive Summary sheet -->*
+*<!-- Screenshot placeholder: Executive Summary sheet -->*
 
 | Sheet | Contents |
 | --- | --- |

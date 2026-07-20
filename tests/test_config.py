@@ -122,9 +122,7 @@ def test_thresholds_for_campaign_prefers_most_specific_key(tmp_path: Path) -> No
     """When several keys match, the longest one wins."""
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "campaigns:\n"
-        "  low:\n    watch_spend: 120\n"
-        "  low_price:\n    watch_spend: 90\n",
+        "campaigns:\n  low:\n    watch_spend: 120\n  low_price:\n    watch_spend: 90\n",
         encoding="utf-8",
     )
 

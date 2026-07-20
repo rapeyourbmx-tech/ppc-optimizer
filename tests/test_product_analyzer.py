@@ -118,9 +118,7 @@ def test_scale_decision_stores_performance_explanation() -> None:
     )
 
     assert decision.status is ProductStatus.SCALE
-    assert decision.explanation == (
-        "ROAS = 14027.14\nCost = 350\nRevenue = 49095\nConversions = 1"
-    )
+    assert decision.explanation == ("ROAS = 14027.14\nCost = 350\nRevenue = 49095\nConversions = 1")
 
 
 def test_pause_decision_stores_spend_explanation() -> None:

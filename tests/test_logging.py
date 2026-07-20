@@ -1,9 +1,9 @@
 """Tests for application logging."""
 
+import logging
 from datetime import date
 from pathlib import Path
 
-import logging
 import pandas as pd
 import pytest
 
@@ -33,9 +33,7 @@ def report_file(tmp_path: Path) -> Path:
 
 def _log_text(base_path: Path) -> str:
     """Read today's log file from a working directory."""
-    return (base_path / "logs" / f"{date.today().isoformat()}.log").read_text(
-        encoding="utf-8"
-    )
+    return (base_path / "logs" / f"{date.today().isoformat()}.log").read_text(encoding="utf-8")
 
 
 def test_configure_logging_creates_directory_and_daily_file(tmp_path: Path) -> None:

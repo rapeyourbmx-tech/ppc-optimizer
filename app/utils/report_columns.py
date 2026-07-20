@@ -2,7 +2,6 @@
 
 import pandas as pd
 
-
 SKU_COLUMNS: tuple[str, ...] = ("sku", "item_id", "product_id", "id")
 IMPRESSION_COLUMNS: tuple[str, ...] = ("impressions",)
 CLICK_COLUMNS: tuple[str, ...] = ("clicks",)

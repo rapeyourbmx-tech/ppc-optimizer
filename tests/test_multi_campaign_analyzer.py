@@ -56,10 +56,7 @@ def test_analyze_builds_one_campaign_report_per_file(
         "Low priority",
     ]
     assert report.campaigns[0].metadata.source_file == "high.csv"
-    assert all(
-        campaign.campaign_summary.total_products == 1
-        for campaign in report.campaigns
-    )
+    assert all(campaign.campaign_summary.total_products == 1 for campaign in report.campaigns)
 
 
 def test_analyze_combines_products_with_campaign_columns(
@@ -163,9 +160,9 @@ def test_analyze_applies_per_campaign_thresholds(tmp_path: Path) -> None:
         encoding="utf-8",
     )
 
-    report = MultiCampaignAnalyzer(
-        configuration=load_configuration(config_path)
-    ).analyze([high_path, low_path])
+    report = MultiCampaignAnalyzer(configuration=load_configuration(config_path)).analyze(
+        [high_path, low_path]
+    )
 
     high_decision, low_decision = report.decisions
     assert str(high_decision.status) == "WATCH"

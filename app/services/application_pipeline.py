@@ -89,7 +89,13 @@ class ApplicationPipeline:
                 conversions=float(product_conversions),
                 conversion_value=float(product_conversion_value),
             )
-            for product_sku, product_clicks, product_cost, product_conversions, product_conversion_value in zip(
+            for (
+                product_sku,
+                product_clicks,
+                product_cost,
+                product_conversions,
+                product_conversion_value,
+            ) in zip(
                 sku,
                 clicks,
                 cost,

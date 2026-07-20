@@ -16,8 +16,15 @@ build/
 dist/
 *.egg-info/
 
-# Generated reports
+# Generated reports and logs
 report.xlsx
+combined.xlsx
+*.xlsx
+!tests/fixtures/*.xlsx
+logs/
+
+# Excel lock files
+~$*
 
 # Local data files
 data/*
@@ -28,4 +35,3 @@ data/*
 .idea/
 .DS_Store
 Thumbs.db
-logs/

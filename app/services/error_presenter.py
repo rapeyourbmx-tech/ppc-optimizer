@@ -46,10 +46,7 @@ def present_error(error: Exception) -> tuple[int, str]:
 
     return (
         EXIT_INTERNAL_ERROR,
-        (
-            f"ERROR\nInternal error: {type(error).__name__}: {error}\n"
-            "Please report this issue."
-        ),
+        (f"ERROR\nInternal error: {type(error).__name__}: {error}\nPlease report this issue."),
     )
 
 

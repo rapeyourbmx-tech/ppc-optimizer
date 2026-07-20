@@ -72,8 +72,7 @@ def test_products_sheet_has_decision_columns_and_layout(
     assert sheet.auto_filter.ref is not None
     status_column = headers.index("Status") + 1
     statuses = {
-        sheet.cell(row=row_number, column=status_column).value
-        for row_number in range(2, 5)
+        sheet.cell(row=row_number, column=status_column).value for row_number in range(2, 5)
     }
     assert statuses == {"SCALE", "PAUSE", "WATCH"}
 
@@ -120,7 +119,7 @@ def test_dashboard_kpis_are_formula_backed(exported_workbook_path: Path) -> None
     ]
 
     assert any("COUNTA(Products!" in formula for formula in formulas)
-    assert any('COUNTIF(' in formula and '"KEEP"' in formula for formula in formulas)
+    assert any("COUNTIF(" in formula and '"KEEP"' in formula for formula in formulas)
     assert any("SUMIFS(" in formula and '"PAUSE"' in formula for formula in formulas)
 
 

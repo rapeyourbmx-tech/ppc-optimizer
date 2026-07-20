@@ -4,7 +4,6 @@ import pandas as pd
 
 from app.utils.column_names import normalize_column_names
 
-
 GOOGLE_ADS_PRODUCT_SCHEMA: tuple[str, ...] = (
     "product_id",
     "product",
@@ -118,7 +117,8 @@ class GoogleAdsProductReportMapper:
 
     def _validate_unique_columns(self, report: pd.DataFrame) -> None:
         """Reject exports that map more than one column to the same field."""
-        duplicate_columns = report.columns[report.columns.duplicated()].unique().tolist()
+        duplicated_mask = report.columns.duplicated()
+        duplicate_columns = report.columns[duplicated_mask].unique().tolist()
         if duplicate_columns:
             names = ", ".join(sorted(map(str, duplicate_columns)))
             message = f"Multiple export columns map to the same internal fields: {names}."
@@ -146,9 +146,13 @@ class GoogleAdsProductReportMapper:
     def _ordered_columns(self, report: pd.DataFrame) -> list[str]:
         """Place recognized columns in canonical schema order before extras."""
         recognized_columns = [
-            column_name for column_name in GOOGLE_ADS_PRODUCT_SCHEMA if column_name in report.columns
+            column_name
+            for column_name in GOOGLE_ADS_PRODUCT_SCHEMA
+            if column_name in report.columns
         ]
         additional_columns = [
-            column_name for column_name in report.columns if column_name not in GOOGLE_ADS_PRODUCT_SCHEMA
+            column_name
+            for column_name in report.columns
+            if column_name not in GOOGLE_ADS_PRODUCT_SCHEMA
         ]
         return [*recognized_columns, *additional_columns]

@@ -28,17 +28,13 @@ class BudgetOptimizer:
             A budget optimization report with per-campaign assessments and
             recommended transfers between them.
         """
-        assessments = [
-            self._assess_campaign(campaign) for campaign in report.campaigns
-        ]
+        assessments = [self._assess_campaign(campaign) for campaign in report.campaigns]
         transfers = self._build_transfers(assessments)
 
         return BudgetOptimizationReport(
             assessments=assessments,
             transfers=transfers,
-            total_expected_gain=sum(
-                transfer.expected_revenue_increase for transfer in transfers
-            ),
+            total_expected_gain=sum(transfer.expected_revenue_increase for transfer in transfers),
         )
 
     def _assess_campaign(self, campaign: CampaignReport) -> CampaignBudgetAssessment:
@@ -57,14 +53,11 @@ class BudgetOptimizer:
         conversions = sum(decision.conversions for decision in decisions)
         roas = revenue / spend if spend else 0.0
 
-        watch_threshold = self._configuration.thresholds_for_campaign(
-            campaign_name
-        ).watch.max_cost
+        watch_threshold = self._configuration.thresholds_for_campaign(campaign_name).watch.max_cost
         growth_spend = sum(
             decision.cost
             for decision in decisions
-            if decision.status is ProductStatus.SCALE
-            or decision.cost < watch_threshold
+            if decision.status is ProductStatus.SCALE or decision.cost < watch_threshold
         )
         growth_share = growth_spend / spend if spend else 0.0
         marginal_efficiency = roas * growth_share
@@ -123,9 +116,7 @@ class BudgetOptimizer:
             amount = source.current_spend * budget.shift_share
             if amount <= 0:
                 continue
-            efficiency_gain = (
-                best_destination.marginal_efficiency - source.marginal_efficiency
-            )
+            efficiency_gain = best_destination.marginal_efficiency - source.marginal_efficiency
             transfers.append(
                 BudgetTransfer(
                     source_campaign=source.campaign_name,

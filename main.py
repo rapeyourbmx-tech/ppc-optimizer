@@ -8,15 +8,15 @@ from typing import Annotated
 
 import typer
 
-from app.config import ConfigurationError, load_configuration
+from app.config import load_configuration
+from app.logging_setup import configure_logging, get_logger
 from app.models.campaign import MultiCampaignReport
 from app.models.product_decision import ProductDecision
 from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
 from app.services.budget_optimizer import BudgetOptimizer
-from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
-from app.logging_setup import configure_logging, get_logger
 from app.services.error_presenter import present_error
+from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
 from app.services.report_validator import ReportValidator
 from app.version import APP_NAME, __version__
 
@@ -129,8 +129,7 @@ def _run_validation(source_paths: list[Path], logger: logging.Logger) -> int:
         logger.warning("%s: %s", issue.source_file, issue.message)
         typer.echo(f"{issue.source_file}: {issue.message}", err=True)
     typer.echo(
-        f"Validation failed: {len(result.issues)} issue(s) "
-        f"in {result.checked_files} file(s).",
+        f"Validation failed: {len(result.issues)} issue(s) in {result.checked_files} file(s).",
         err=True,
     )
     return 1
@@ -148,8 +147,7 @@ application = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
 @application.command(
     epilog=(
-        "Exit codes: 0 success | 1 validation error | "
-        "2 configuration error | 3 internal error."
+        "Exit codes: 0 success | 1 validation error | 2 configuration error | 3 internal error."
     ),
 )
 def main(
