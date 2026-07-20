@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from app.analyzers.product_analyzer import ProductAnalyzer
+from app.config import ThresholdConfiguration
 from app.models.campaign import (
     CampaignMetadata,
     CampaignReport,
@@ -30,9 +32,21 @@ _METADATA_COLUMNS: tuple[str, ...] = ("campaign_name", "campaign_type", "source_
 class MultiCampaignAnalyzer:
     """Analyze several product reports and combine them into one report."""
 
-    def __init__(self, pipeline: ApplicationPipeline | None = None) -> None:
-        """Initialize the analyzer with the single-report pipeline it reuses."""
-        self._pipeline = pipeline or ApplicationPipeline()
+    def __init__(
+        self,
+        configuration: ThresholdConfiguration | None = None,
+        pipeline: ApplicationPipeline | None = None,
+    ) -> None:
+        """Initialize the analyzer.
+
+        Args:
+            configuration: Thresholds with optional per-campaign overrides,
+                used to build one pipeline per campaign.
+            pipeline: Explicit pipeline reused for every campaign; overrides
+                the configuration when provided.
+        """
+        self._configuration = configuration or ThresholdConfiguration()
+        self._shared_pipeline = pipeline
 
     def analyze(self, source_paths: Sequence[Path]) -> MultiCampaignReport:
         """Run the pipeline for every source file and combine the results.
@@ -55,8 +69,8 @@ class MultiCampaignAnalyzer:
         combined_decisions: list[ProductDecision] = []
 
         for source_path in source_paths:
-            result = self._pipeline.run(source_path)
             metadata = _derive_campaign_metadata(source_path)
+            result = self._pipeline_for(metadata.name).run(source_path)
             campaigns.append(
                 CampaignReport(
                     metadata=metadata,
@@ -78,6 +92,14 @@ class MultiCampaignAnalyzer:
             products=pd.concat(campaign_frames, ignore_index=True, sort=False),
             decisions=combined_decisions,
         )
+
+    def _pipeline_for(self, campaign_name: str) -> ApplicationPipeline:
+        """Return the pipeline for one campaign with its effective thresholds."""
+        if self._shared_pipeline is not None:
+            return self._shared_pipeline
+
+        thresholds = self._configuration.thresholds_for_campaign(campaign_name)
+        return ApplicationPipeline(product_analyzer=ProductAnalyzer(thresholds=thresholds))
 
 
 def _derive_campaign_metadata(source_path: Path) -> CampaignMetadata:

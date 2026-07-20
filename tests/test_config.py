@@ -4,7 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from app.config import ConfigurationError, DecisionThresholds, load_thresholds
+from app.config import (
+    ConfigurationError,
+    DecisionThresholds,
+    load_configuration,
+    load_thresholds,
+)
 
 
 def test_load_thresholds_returns_defaults_without_config_file(
@@ -74,3 +79,68 @@ def test_load_thresholds_rejects_unsupported_extension(tmp_path: Path) -> None:
 
     with pytest.raises(ConfigurationError, match="Only YAML"):
         load_thresholds(config_path)
+
+
+def test_load_configuration_reads_campaign_overrides(tmp_path: Path) -> None:
+    """Campaign sections override pause, watch, and scale thresholds."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "watch:\n  max_cost: 300\n"
+        "campaigns:\n"
+        "  low:\n"
+        "    pause_spend: 220\n"
+        "    watch_spend: 120\n"
+        "    scale_roas: 700\n",
+        encoding="utf-8",
+    )
+
+    configuration = load_configuration(config_path)
+    low_thresholds = configuration.thresholds_for_campaign("low_price")
+
+    assert low_thresholds.pause.min_cost == 220.0
+    assert low_thresholds.watch.max_cost == 120.0
+    assert low_thresholds.scale.min_roas == 700.0
+    assert low_thresholds.keep.min_conversions == 2.0
+
+
+def test_thresholds_for_campaign_without_override_returns_base(
+    tmp_path: Path,
+) -> None:
+    """Campaigns without a matching section use the global thresholds."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "campaigns:\n  low:\n    watch_spend: 120\n",
+        encoding="utf-8",
+    )
+
+    configuration = load_configuration(config_path)
+
+    assert configuration.thresholds_for_campaign("brand").watch.max_cost == 300.0
+
+
+def test_thresholds_for_campaign_prefers_most_specific_key(tmp_path: Path) -> None:
+    """When several keys match, the longest one wins."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "campaigns:\n"
+        "  low:\n    watch_spend: 120\n"
+        "  low_price:\n    watch_spend: 90\n",
+        encoding="utf-8",
+    )
+
+    configuration = load_configuration(config_path)
+
+    assert configuration.thresholds_for_campaign("low_price").watch.max_cost == 90.0
+    assert configuration.thresholds_for_campaign("low_value").watch.max_cost == 120.0
+
+
+def test_load_configuration_rejects_unknown_campaign_keys(tmp_path: Path) -> None:
+    """Misspelled campaign override keys produce an informative error."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "campaigns:\n  low:\n    pause_spent: 220\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigurationError, match="Invalid threshold configuration"):
+        load_configuration(config_path)

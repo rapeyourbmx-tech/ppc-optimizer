@@ -6,13 +6,14 @@ from typing import Annotated
 
 import typer
 
-from app.analyzers.product_analyzer import ProductAnalyzer
-from app.config import ConfigurationError, load_thresholds
+from app.config import ConfigurationError, load_configuration
 from app.models.campaign import MultiCampaignReport
 from app.models.product_decision import ProductDecision
 from app.reporting.excel_workbook_exporter import ExcelWorkbookExporter
 from app.services.application_pipeline import ApplicationPipeline
 from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
+
+# ConfigurationError subclasses ValueError, so run() maps it to exit code 2.
 
 _EXPLANATION_SEPARATOR = "-" * 32
 
@@ -29,8 +30,9 @@ def run(
     source_paths = [file_paths] if isinstance(file_paths, Path) else list(file_paths)
 
     try:
-        active_pipeline = pipeline or _build_pipeline(config_path)
-        report = MultiCampaignAnalyzer(pipeline=active_pipeline).analyze(source_paths)
+        configuration = load_configuration(config_path)
+        analyzer = MultiCampaignAnalyzer(configuration=configuration, pipeline=pipeline)
+        report = analyzer.analyze(source_paths)
         ExcelWorkbookExporter().export(report, output_path)
     except (OSError, ValueError) as error:
         typer.echo(f"Error: {error}", err=True)
@@ -81,16 +83,6 @@ def main(
 def cli() -> None:
     """Run the Typer command-line interface."""
     typer.run(main)
-
-
-def _build_pipeline(config_path: Path | None) -> ApplicationPipeline:
-    """Build the pipeline with thresholds from the configuration file.
-
-    Raises:
-        ConfigurationError: If the configuration file cannot be used.
-    """
-    thresholds = load_thresholds(config_path)
-    return ApplicationPipeline(product_analyzer=ProductAnalyzer(thresholds=thresholds))
 
 
 def _console_summary(report: MultiCampaignReport) -> str:

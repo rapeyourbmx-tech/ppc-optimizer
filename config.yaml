@@ -13,9 +13,28 @@ pause:
 
 # SCALE: strong, proven performance.
 scale:
-  min_roas: 10               # ROAS threshold in PERCENT (10 = 0.1x return; 1000 = 10x return)
+  min_roas: 100               # ROAS threshold in PERCENT (10 = 0.1x return; 1000 = 10x return)
   min_conversion_value: 5000 # minimum revenue from conversions (currency units)
 
 # KEEP: converting products that are not yet scale candidates.
 keep:
   min_conversions: 2   # minimum number of conversions to keep the product running
+
+# Per-campaign overrides. A section applies when its key equals the campaign
+# name or is contained in it (e.g. "low" matches "low_price"). Shorthand keys:
+#   pause_spend -> pause.min_cost, watch_spend -> watch.max_cost,
+#   scale_roas  -> scale.min_roas (in percent).
+# Thresholds not listed here keep the global values above.
+campaigns:
+  high:
+    pause_spend: 700
+    watch_spend: 300
+    scale_roas: 1200
+  average:
+    pause_spend: 450
+    watch_spend: 250
+    scale_roas: 900
+  low:
+    pause_spend: 220
+    watch_spend: 120
+    scale_roas: 700

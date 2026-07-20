@@ -88,6 +88,22 @@ name), every product keeps its campaign_name, campaign_type, and
 source_file, the Dashboard gains a campaign comparison table, and the
 Executive Summary lists recommendations per campaign.
 
+### Per-campaign thresholds
+
+Add a `campaigns` section to `config.yaml` to override thresholds for
+specific campaigns. A section applies when its key equals the campaign
+name or is contained in it (`low` matches `low_price`):
+
+```yaml
+campaigns:
+  low:
+    pause_spend: 220   # overrides pause.min_cost
+    watch_spend: 120   # overrides watch.max_cost
+    scale_roas: 700    # overrides scale.min_roas (percent)
+```
+
+Thresholds not listed in a campaign section keep the global values.
+
 Rules are checked in order: watch (`max_cost`), pause (`min_cost`,
 `max_conversions`), scale (`min_roas` in percent, `min_conversion_value`),
 keep (`min_conversions`). Products that match no rule stay on the watch

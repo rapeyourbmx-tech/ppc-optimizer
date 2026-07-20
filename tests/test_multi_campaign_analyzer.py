@@ -145,3 +145,28 @@ def test_workbook_contains_campaign_comparison_and_recommendations(
     )
     assert "Recommended actions per campaign" in summary_values
     assert any("average (Medium priority, average.csv)" in value for value in summary_values)
+
+
+def test_analyze_applies_per_campaign_thresholds(tmp_path: Path) -> None:
+    """The same product data gets different decisions per campaign config."""
+    from app.config import load_configuration
+
+    high_path = tmp_path / "high.csv"
+    low_path = tmp_path / "low.csv"
+    _write_report(high_path, "HIGH-150", cost=150.0, conversion_value=0.0)
+    _write_report(low_path, "LOW-150", cost=150.0, conversion_value=0.0)
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "campaigns:\n"
+        "  high:\n    watch_spend: 300\n    pause_spend: 300\n"
+        "  low:\n    watch_spend: 120\n    pause_spend: 130\n",
+        encoding="utf-8",
+    )
+
+    report = MultiCampaignAnalyzer(
+        configuration=load_configuration(config_path)
+    ).analyze([high_path, low_path])
+
+    high_decision, low_decision = report.decisions
+    assert str(high_decision.status) == "WATCH"
+    assert str(low_decision.status) == "PAUSE"
