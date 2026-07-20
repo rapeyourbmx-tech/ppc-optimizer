@@ -1,181 +1,238 @@
 # PPC Optimizer
 
-PPC Optimizer will analyze Google Ads product reports and produce a structured
-Excel workbook named `report.xlsx`.
+**Google Ads Product Performance Optimizer** — turn raw product report
+exports into decisions: what to scale, what to pause, and where to move
+your budget.
 
-This repository loads CSV/XLSX Google Ads product reports, produces product
-decisions, campaign recommendations, and audit findings, and exports a
-formatted `report.xlsx` workbook.
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)
 
-## Requirements
+![Dashboard](docs/screenshots/dashboard.png)
+*<!-- TODO: add a screenshot of the Dashboard sheet -->*
 
-- Python 3.11 or newer
+---
 
-## Setup
+## Overview
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+PPC Optimizer analyzes Google Ads product reports (CSV or XLSX), classifies
+every product as **KEEP / WATCH / PAUSE / SCALE** with a metric-based
+explanation, compares campaigns side by side, recommends budget
+redistribution, and exports everything into a formatted Excel workbook with
+live formulas.
+
+It is built for real-world exports: Ukrainian and English headers, preamble
+rows, double-quoted rows, currency prefixes (`грн34 034,00`), non-breaking
+thousands separators, and decimal commas are handled out of the box.
+
+## Features
+
+- **Robust report loader** — auto-detects the header row, delimiter, and
+  encoding; unwraps double-quoted exports; normalizes locale-formatted
+  numbers; maps Ukrainian and English column names to one schema
+- **Decision engine** — configurable rules classify each product and store
+  a human-readable explanation (`--explain`)
+- **Multi-campaign analysis** — pass several files, each becomes a campaign;
+  every product keeps its campaign name, type, and source file
+- **Per-campaign thresholds** — one `config.yaml` section per campaign
+  (`low` matches `low_price`), the rest inherits the global values
+- **Budget optimizer** — marginal efficiency and saturation scores per
+  campaign, INCREASE / KEEP / DECREASE actions, and a concrete transfer
+  plan with expected gain and confidence
+- **Excel workbook** — 9 sheets, KPI cards, campaign comparison, budget
+  table, conditional formatting, frozen headers, autofilters, and
+  formula-backed values that recalculate in Excel
+- **Production CLI** — `--validate`, `--dry-run`, `--verbose`, `--version`,
+  friendly errors with *Expected/Found* suggestions, proper exit codes
+- **Daily file logging** — `logs/YYYY-MM-DD.log` with version, inputs,
+  product counts, warnings, and execution time
+- **Fully configuration-driven** — no hardcoded thresholds anywhere
+
+## Installation
+
+Requires **Python 3.11+**.
+
+```bash
+git clone https://github.com/rapeyourbmx-tech/ppc-optimizer.git
+cd ppc-optimizer
+pip install .
 ```
 
-## Project layout
+This installs the `ppc-optimizer` console command. For development:
 
-```text
-.
-├── app/
-│   ├── cli.py                 # Command-line interface boundary
-│   ├── config.py              # Application configuration models
-│   ├── loaders/               # Input report loaders
-│   ├── analyzers/             # Future performance analysis components
-│   ├── core/                  # Shared constants and infrastructure helpers
-│   ├── models/                # Typed domain and request models
-│   ├── repositories/          # Source data access contracts
-│   ├── services/              # Analysis and orchestration contracts
-│   └── reporting/             # Excel workbook export contracts
-├── data/                      # Local input data (not committed)
-├── examples/                  # Usage examples
-├── reports/                   # Report-facing package boundary
-├── templates/                 # Workbook templates
-├── tests/                     # Automated tests
-└── main.py                    # Application entry point
+```bash
+pip install -e .[dev]
 ```
 
-## Workbook sheets
+## Quick Start
 
-- Dashboard — formula-backed KPI cards
-- Executive Summary — key metrics and recommended actions
-- Products — every source column plus Status, ROAS, Recommendation, Reason
-- KEEP / WATCH / PAUSE / SCALE — one sheet per decision
-- Top Winners — highest-ROAS products with revenue
-- Top Losers — largest spend with zero conversions
+1. In Google Ads, export a product report (CSV or XLSX).
+2. Run the analysis:
 
-Brands and Categories sheets are planned for a future release. Use
-`--output` to change the workbook path (default: `report.xlsx`).
-
-## Development
-
-```powershell
-pytest
+```bash
+ppc-optimizer report.csv
 ```
 
-Run the current console pipeline with a report file:
+3. Open the generated `report.xlsx`.
 
-```powershell
-python main.py path\to\product_report.csv
+```
+Health: Needs attention | Products: 130 | Keep: 0 | Watch: 120 | Pause: 7 | Scale: 3
+Report saved: report.xlsx
+```
+
+## Examples
+
+**Analyze several campaigns together** (one file = one campaign):
+
+```bash
+ppc-optimizer high_price.csv average_price.csv low_price.csv --output combined.xlsx
+```
+
+**Print an explanation for every product decision:**
+
+```bash
+ppc-optimizer report.csv --explain
+```
+
+```
+SKU: 703501019
+Decision: SCALE
+Reason:
+ROAS = 43737.19
+Cost = 112.25
+Revenue = 49095
+Conversions = 1
+```
+
+**Validate exports before analyzing** (broken files fail fast):
+
+```bash
+ppc-optimizer report.csv --validate
+```
+
+**Experiment with thresholds without touching the workbook:**
+
+```bash
+ppc-optimizer report.csv --config strict.yaml --dry-run --verbose
 ```
 
 ## Configuration
 
-The whole application is configured through `config.yaml` in the project
-root: decision thresholds, per-campaign overrides, budget optimization,
-audit thresholds (`audit`), Excel rendering (`excel`: font, column widths,
-top-list size, default output file), and dashboard rendering
-(`dashboard`: title, colors, ROAS color scale). The configuration is
-loaded once on startup and injected into every service; there are no
-hardcoded thresholds in the code.
-
-Decision thresholds can be
-edited without touching the code. A custom YAML or JSON file can be passed
-with `--config`:
-
-```powershell
-python main.py data\product_report.csv --config my_thresholds.yaml
-```
-
-## Installation
-
-Install the application with pip from the project root:
-
-```powershell
-pip install .
-```
-
-This provides the `ppc-optimizer` console command:
-
-```powershell
-ppc-optimizer high.csv average.csv low.csv
-```
-
-For development, use an editable install: `pip install -e .[dev]`.
-
-### Building distributions
-
-```powershell
-pip install build
-python -m build
-```
-
-The wheel and source distribution appear in `dist/`. The package version
-comes from `app/version.py` (single source of truth); the license is MIT
-(see `LICENSE`), and the author field in `pyproject.toml` is a
-placeholder to configure before publishing.
-
-## Command line
-
-```powershell
-python main.py report.csv                # analyze and build the workbook
-python main.py report.csv --dry-run      # summary only, no Excel
-python main.py report.csv --validate     # check the file, exit 0/1
-python main.py report.csv --verbose      # print progress stages
-python main.py --version                 # print the application version
-```
-
-Options are grouped in `--help` (Input & Output, Modes, Diagnostics).
-Errors are printed as friendly messages (with Expected/Found suggestions
-for misspelled columns), never as Python tracebacks. Exit codes:
-0 success, 1 validation error, 2 configuration error, 3 internal error.
-
-## Multiple campaigns
-
-Pass several report files to analyze them as separate campaigns in one run:
-
-```powershell
-python main.py data\high.csv data\average.csv data\low.csv
-```
-
-Each file becomes one campaign (name and type are derived from the file
-name), every product keeps its campaign_name, campaign_type, and
-source_file, the Dashboard gains a campaign comparison table, and the
-Executive Summary lists recommendations per campaign.
-
-### Per-campaign thresholds
-
-Add a `campaigns` section to `config.yaml` to override thresholds for
-specific campaigns. A section applies when its key equals the campaign
-name or is contained in it (`low` matches `low_price`):
+Everything lives in `config.yaml` next to where you run the command
+(or pass `--config path.yaml`). Missing keys fall back to built-in
+defaults; misspelled keys fail with a clear error.
 
 ```yaml
-campaigns:
+watch:
+  max_cost: 300          # below this spend a product is only watched
+pause:
+  min_cost: 300          # spend at or above this with no conversions -> PAUSE
+  max_conversions: 0
+scale:
+  min_roas: 100          # ROAS threshold in percent
+  min_conversion_value: 5000
+keep:
+  min_conversions: 2
+
+campaigns:               # per-campaign overrides ("low" matches "low_price")
   low:
-    pause_spend: 220   # overrides pause.min_cost
-    watch_spend: 120   # overrides watch.max_cost
-    scale_roas: 700    # overrides scale.min_roas (percent)
+    pause_spend: 220
+    watch_spend: 120
+    scale_roas: 700
+
+budget:                  # budget optimizer
+  increase_efficiency: 10
+  decrease_efficiency: 3
+  shift_share: 0.15
+  confidence_conversions: 30
+
+audit:                   # audit engine
+  profitable_roas: 500
+  high_roas: 1200
+  low_ctr: 1.0
+
+excel:                   # workbook rendering
+  font_name: Arial
+  top_list_size: 10
+  output_file: report.xlsx
+
+dashboard:               # dashboard rendering
+  title: "PPC Optimizer — Campaign Dashboard"
+  header_color: "1F3864"
 ```
 
-Thresholds not listed in a campaign section keep the global values.
+## CLI options
 
-### Budget optimization
+```
+ppc-optimizer FILE [FILE ...] [OPTIONS]
+```
 
-The workbook includes a budget redistribution recommendation built from
-per-campaign efficiency scores. Marginal efficiency is the campaign ROAS
-multiplied by its growth share (spend in SCALE products or below the
-watch threshold); saturation is the complement of the growth share. The
-`budget` section of `config.yaml` controls the INCREASE and DECREASE
-efficiency thresholds, the share of spend to move, and the conversions
-required for full confidence. Results appear in the Budget Optimization
-table on the Dashboard and the Action Plan in the Executive Summary.
+| Option | Group | Description |
+| --- | --- | --- |
+| `--config PATH` | Input & Output | Load a custom YAML or JSON configuration |
+| `--output PATH` | Input & Output | Workbook path (default: `excel.output_file`) |
+| `--explain` | Modes | Print an explanation for every decision |
+| `--dry-run` | Modes | Full analysis, summary only, no Excel |
+| `--validate` | Modes | Check input files only, exit 0/1 |
+| `--verbose` | Diagnostics | Progress stages and debug logging |
+| `--version` | Diagnostics | Print `PPC Optimizer` / `v1.0.0` and exit |
 
-Rules are checked in order: watch (`max_cost`), pause (`min_cost`,
-`max_conversions`), scale (`min_roas` in percent, `min_conversion_value`),
-keep (`min_conversions`). Products that match no rule stay on the watch
-list. When no configuration file is present, built-in defaults matching
-`config.yaml` are used.
+**Exit codes:** `0` success · `1` validation error · `2` configuration
+error · `3` internal error. Errors are printed as friendly messages —
+never Python tracebacks.
 
-## Input reports
+## Output workbook
 
-`GoogleAdsProductReportLoader` accepts CSV and XLSX product reports, detects
-the format from the file extension, and returns a pandas `DataFrame` with
-canonical internal column names. It recognizes the supported Google Ads Product
-export headers in English and Ukrainian and reports missing required metrics
-before analysis begins.
+![Executive Summary](docs/screenshots/executive-summary.png)
+*<!-- TODO: add a screenshot of the Executive Summary sheet -->*
+
+| Sheet | Contents |
+| --- | --- |
+| **Dashboard** | KPI cards, campaign comparison, budget optimization table |
+| **Executive Summary** | Key metrics, per-campaign recommendations, action plan |
+| **Products** | Every source column + Status, ROAS, Recommendation, Reason |
+| **KEEP / WATCH / PAUSE / SCALE** | One sheet per decision, with campaign |
+| **Top Winners** | Highest-ROAS products with revenue |
+| **Top Losers** | Largest spend with zero conversions |
+
+KPI values, ROAS, and comparison tables are Excel formulas — edit the
+Products sheet and the workbook recalculates.
+
+## Troubleshooting
+
+**`Permission denied: 'report.xlsx'`** — the workbook is open in Excel.
+Close it and rerun.
+
+**`Column "Conversions" not found. / Found: Conversion`** — a required
+column is missing; the message names the closest header found in your
+file. Re-export from Google Ads with the standard columns.
+
+**All products land in WATCH** — your per-product spend is below
+`watch.max_cost`. Lower it globally or per campaign in `config.yaml`.
+
+**`config.yaml` seems ignored** — the file is looked up in the *current
+working directory*. Run from the project root or pass `--config` with a
+full path.
+
+**Something odd happened** — check `logs/YYYY-MM-DD.log`; rerun with
+`--verbose` to capture debug records and stack traces in the log.
+
+## Development
+
+```bash
+pip install -e .[dev]
+pytest                 # 99 tests
+pytest -m "not slow"   # skip the pip-install packaging test
+```
+
+The codebase follows SOLID with one responsibility per module:
+`app/loaders` (parsing), `app/analyzers` (decisions and audit),
+`app/services` (pipeline, multi-campaign, budget, validation),
+`app/reporting` (Excel), `app/config.py` (validated configuration,
+loaded once and injected). Business rules live in `config.yaml`, not in
+code. Versioning: bump `app/version.py` (pyproject reads it
+dynamically) and tag the release.
+
+## License
+
+[MIT](LICENSE) — free for commercial and private use.
