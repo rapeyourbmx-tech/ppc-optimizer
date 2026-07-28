@@ -13,6 +13,8 @@ _METRIC_COLUMNS: tuple[str, ...] = (
     "cost",
     "conversions",
     "conversion_value",
+    "direct_revenue",
+    "assist_revenue",
 )
 _MAX_LISTED_SKUS = 5
 

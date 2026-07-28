@@ -9,6 +9,7 @@ import pandas as pd
 
 from app.loaders.google_ads_product_report_mapper import GoogleAdsProductReportMapper
 from app.loaders.metric_normalizer import normalize_metric_values
+from app.loaders.report_type_detection import AutoDetectingReportMapper
 
 
 class UnsupportedReportFormatError(ValueError):
@@ -28,9 +29,17 @@ class GoogleAdsProductReportLoader:
     _SNIFF_SAMPLE_LINES = 10
     _FIRST_CELL_PATTERN = re.compile(r'^\s*"?([^",;\t|]*)')
 
-    def __init__(self, mapper: GoogleAdsProductReportMapper | None = None) -> None:
-        """Initialize the loader with the Google Ads export header mapper."""
-        self._mapper = mapper or GoogleAdsProductReportMapper()
+    def __init__(
+        self,
+        mapper: GoogleAdsProductReportMapper | AutoDetectingReportMapper | None = None,
+    ) -> None:
+        """Initialize the loader with the Google Ads export header mapper.
+
+        Without an explicit mapper the loader detects the report type
+        automatically: statistics exports (Direct Revenue + Cross-sell
+        Revenue) win over base exports (Conversion Value).
+        """
+        self._mapper = mapper or AutoDetectingReportMapper()
 
     def load(self, source_path: Path) -> pd.DataFrame:
         """Load a CSV or XLSX report and normalize its column names.

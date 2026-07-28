@@ -192,7 +192,8 @@ def test_load_reports_missing_required_google_ads_columns(tmp_path: Path) -> Non
     with pytest.raises(GoogleAdsProductReportMappingError) as error:
         GoogleAdsProductReportLoader().load(source_path)
 
-    assert "Missing required columns: conversion_value, conversions." in str(error.value)
+    assert "Base report is missing: conversion_value, conversions." in str(error.value)
+    assert "Statistics report is missing" in str(error.value)
 
 
 def test_load_rejects_unsupported_file_types(tmp_path: Path) -> None:

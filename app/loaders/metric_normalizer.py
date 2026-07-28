@@ -12,6 +12,8 @@ _METRIC_COLUMNS: tuple[str, ...] = (
     "cost",
     "conversions",
     "conversion_value",
+    "direct_revenue",
+    "assist_revenue",
     "cost_per_conversion",
     "all_conversions",
     "all_conversion_value",

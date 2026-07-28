@@ -123,4 +123,4 @@ def test_validation_issues_are_logged_as_warnings(
     log_text = _log_text(tmp_path)
     assert exit_code == 1
     assert "WARNING ppc_optimizer: bad.csv" in log_text
-    assert "Missing required columns" in log_text
+    assert "matches neither" in log_text

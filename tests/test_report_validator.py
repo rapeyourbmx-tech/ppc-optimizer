@@ -49,7 +49,7 @@ def test_missing_required_columns_are_reported(tmp_path: Path) -> None:
     result = ReportValidator().validate([source_path])
 
     assert not result.is_valid
-    assert "Missing required columns" in result.issues[0].message
+    assert "matches neither" in result.issues[0].message
 
 
 def test_duplicated_skus_are_reported(tmp_path: Path) -> None:

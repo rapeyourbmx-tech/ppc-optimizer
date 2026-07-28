@@ -104,7 +104,8 @@ def test_validate_fails_with_exit_code_one(tmp_path: Path) -> None:
     result = runner.invoke(application, [str(bad_path), "--validate"])
 
     assert result.exit_code == 1
-    assert "Missing required columns" in result.output
+    assert "matches neither" in result.output
+    assert "Base report is missing" in result.output
     assert "Validation failed" in result.output
 
 

@@ -1,0 +1,584 @@
+diff --git a/app/importers/google_ads_report_importer.py b/app/importers/google_ads_report_importer.py
+index b991cf3..e3c4f75 100644
+--- a/app/importers/google_ads_report_importer.py
++++ b/app/importers/google_ads_report_importer.py
+@@ -2,12 +2,8 @@
+ 
+ from pathlib import Path
+ 
+-import pandas as pd
+-
+-from app.loaders import metric_normalizer
+-from app.loaders.google_ads_product_report_mapper import (
+-    GoogleAdsProductReportMapper,
+-    MissingColumnsError,
++from app.loaders.google_ads_statistics_report_mapper import (
++    GoogleAdsStatisticsReportMapper,
+ )
+ from app.loaders.product_report_loader import GoogleAdsProductReportLoader
+ from app.models.product_statistics import ProductStatistics
+@@ -15,64 +11,6 @@ from app.models.product_statistics import ProductStatistics
+ _REVENUE_COLUMNS: tuple[str, ...] = ("direct_revenue", "assist_revenue")
+ 
+ 
+-class GoogleAdsStatisticsReportMapper(GoogleAdsProductReportMapper):
+-    """Header mapping for statistics exports with revenue split columns.
+-
+-    Extends the base export mapper with Offer ID, Direct Revenue, and
+-    Cross-sell Revenue headers (the last one maps to the internal
+-    assist_revenue field) and requires the statistics field set instead
+-    of the base report field set.
+-    """
+-
+-    _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
+-        **GoogleAdsProductReportMapper._COLUMN_ALIASES,
+-        "product_id": (
+-            *GoogleAdsProductReportMapper._COLUMN_ALIASES["product_id"],
+-            "offer_id",
+-            "ідентифікатор_пропозиції",
+-        ),
+-        "direct_revenue": (
+-            "direct_revenue",
+-            "прямий_дохід",
+-            "дохід_від_прямих_продажів",
+-        ),
+-        "assist_revenue": (
+-            "cross_sell_revenue",
+-            "assist_revenue",
+-            "дохід_від_перехресних_продажів",
+-            "перехресний_дохід",
+-        ),
+-    }
+-    _REQUIRED_STATISTICS_COLUMNS: tuple[str, ...] = (
+-        "product_id",
+-        "cost",
+-        "clicks",
+-        "impressions",
+-        "direct_revenue",
+-        "assist_revenue",
+-        "conversions",
+-    )
+-
+-    def _validate_required_columns(
+-        self,
+-        report: pd.DataFrame,
+-        original_columns: list[str],
+-    ) -> None:
+-        """Ensure the export carries every statistics field."""
+-        missing_columns = sorted(set(self._REQUIRED_STATISTICS_COLUMNS) - set(report.columns))
+-        if missing_columns:
+-            names = ", ".join(missing_columns)
+-            message = (
+-                "The file is not a complete Google Ads statistics report. "
+-                f"Missing required columns: {names}."
+-            )
+-            raise MissingColumnsError(
+-                message,
+-                missing_columns=missing_columns,
+-                available_columns=original_columns,
+-            )
+-
+-
+ class GoogleAdsReportImporter:
+     """Import product statistics from a Google Ads CSV or XLSX export.
+ 
+@@ -102,7 +40,6 @@ class GoogleAdsReportImporter:
+             UnsupportedReportFormatError: If the file is not CSV or XLSX.
+         """
+         frame = self._loader.load(source_path)
+-        frame = self._normalize_revenue_columns(frame)
+ 
+         return [
+             ProductStatistics(
+@@ -118,19 +55,3 @@ class GoogleAdsReportImporter:
+             .fillna(0.0)
+             .itertuples(index=False)
+         ]
+-
+-    @staticmethod
+-    def _normalize_revenue_columns(frame: pd.DataFrame) -> pd.DataFrame:
+-        """Convert the revenue split columns to numeric values.
+-
+-        The shared loader normalizes only the base metric columns, so the
+-        statistics-specific revenue columns are normalized here with the
+-        same locale-aware routine (module-internal by design).
+-        """
+-        normalized_frame = frame.copy()
+-        for column_name in _REVENUE_COLUMNS:
+-            normalized_frame[column_name] = metric_normalizer._to_numeric(  # noqa: SLF001
+-                normalized_frame[column_name]
+-            )
+-
+-        return normalized_frame
+diff --git a/app/loaders/google_ads_statistics_report_mapper.py b/app/loaders/google_ads_statistics_report_mapper.py
+new file mode 100644
+index 0000000..4c8d9b2
+--- /dev/null
++++ b/app/loaders/google_ads_statistics_report_mapper.py
+@@ -0,0 +1,66 @@
++"""Header mapping for Google Ads statistics exports."""
++
++import pandas as pd
++
++from app.loaders.google_ads_product_report_mapper import (
++    GoogleAdsProductReportMapper,
++    MissingColumnsError,
++)
++
++
++class GoogleAdsStatisticsReportMapper(GoogleAdsProductReportMapper):
++    """Header mapping for statistics exports with revenue split columns.
++
++    Extends the base export mapper with Offer ID, Direct Revenue, and
++    Cross-sell Revenue headers (the last one maps to the internal
++    assist_revenue field) and requires the statistics field set instead
++    of the base report field set.
++    """
++
++    _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
++        **GoogleAdsProductReportMapper._COLUMN_ALIASES,
++        "product_id": (
++            *GoogleAdsProductReportMapper._COLUMN_ALIASES["product_id"],
++            "offer_id",
++            "ідентифікатор_пропозиції",
++        ),
++        "direct_revenue": (
++            "direct_revenue",
++            "прямий_дохід",
++            "дохід_від_прямих_продажів",
++        ),
++        "assist_revenue": (
++            "cross_sell_revenue",
++            "assist_revenue",
++            "дохід_від_перехресних_продажів",
++            "перехресний_дохід",
++        ),
++    }
++    _REQUIRED_STATISTICS_COLUMNS: tuple[str, ...] = (
++        "product_id",
++        "cost",
++        "clicks",
++        "impressions",
++        "direct_revenue",
++        "assist_revenue",
++        "conversions",
++    )
++
++    def _validate_required_columns(
++        self,
++        report: pd.DataFrame,
++        original_columns: list[str],
++    ) -> None:
++        """Ensure the export carries every statistics field."""
++        missing_columns = sorted(set(self._REQUIRED_STATISTICS_COLUMNS) - set(report.columns))
++        if missing_columns:
++            names = ", ".join(missing_columns)
++            message = (
++                "The file is not a complete Google Ads statistics report. "
++                f"Missing required columns: {names}."
++            )
++            raise MissingColumnsError(
++                message,
++                missing_columns=missing_columns,
++                available_columns=original_columns,
++            )
+diff --git a/app/loaders/metric_normalizer.py b/app/loaders/metric_normalizer.py
+index 5737ebf..0a66c85 100644
+--- a/app/loaders/metric_normalizer.py
++++ b/app/loaders/metric_normalizer.py
+@@ -12,6 +12,8 @@ _METRIC_COLUMNS: tuple[str, ...] = (
+     "cost",
+     "conversions",
+     "conversion_value",
++    "direct_revenue",
++    "assist_revenue",
+     "cost_per_conversion",
+     "all_conversions",
+     "all_conversion_value",
+diff --git a/app/loaders/product_report_loader.py b/app/loaders/product_report_loader.py
+index a669aa7..09104d2 100644
+--- a/app/loaders/product_report_loader.py
++++ b/app/loaders/product_report_loader.py
+@@ -9,6 +9,7 @@ import pandas as pd
+ 
+ from app.loaders.google_ads_product_report_mapper import GoogleAdsProductReportMapper
+ from app.loaders.metric_normalizer import normalize_metric_values
++from app.loaders.report_type_detection import AutoDetectingReportMapper
+ 
+ 
+ class UnsupportedReportFormatError(ValueError):
+@@ -28,9 +29,17 @@ class GoogleAdsProductReportLoader:
+     _SNIFF_SAMPLE_LINES = 10
+     _FIRST_CELL_PATTERN = re.compile(r'^\s*"?([^",;\t|]*)')
+ 
+-    def __init__(self, mapper: GoogleAdsProductReportMapper | None = None) -> None:
+-        """Initialize the loader with the Google Ads export header mapper."""
+-        self._mapper = mapper or GoogleAdsProductReportMapper()
++    def __init__(
++        self,
++        mapper: GoogleAdsProductReportMapper | AutoDetectingReportMapper | None = None,
++    ) -> None:
++        """Initialize the loader with the Google Ads export header mapper.
++
++        Without an explicit mapper the loader detects the report type
++        automatically: statistics exports (Direct Revenue + Cross-sell
++        Revenue) win over base exports (Conversion Value).
++        """
++        self._mapper = mapper or AutoDetectingReportMapper()
+ 
+     def load(self, source_path: Path) -> pd.DataFrame:
+         """Load a CSV or XLSX report and normalize its column names.
+diff --git a/app/loaders/report_type_detection.py b/app/loaders/report_type_detection.py
+new file mode 100644
+index 0000000..c1dde6a
+--- /dev/null
++++ b/app/loaders/report_type_detection.py
+@@ -0,0 +1,130 @@
++"""Automatic detection of the Google Ads report type by its columns."""
++
++from enum import StrEnum
++
++import pandas as pd
++
++from app.loaders.google_ads_product_report_mapper import (
++    _REQUIRED_COLUMNS as _BASE_REQUIRED_COLUMNS,
++)
++from app.loaders.google_ads_product_report_mapper import (
++    GoogleAdsProductReportMapper,
++    MissingColumnsError,
++)
++from app.loaders.google_ads_statistics_report_mapper import (
++    GoogleAdsStatisticsReportMapper,
++)
++from app.utils.column_names import normalize_column_names
++
++
++class ReportType(StrEnum):
++    """Supported Google Ads report formats."""
++
++    BASE = "base"
++    STATISTICS = "statistics"
++
++
++class AutoDetectingReportMapper:
++    """Route a report to the base or statistics mapper by its columns.
++
++    A report with the revenue split (Direct Revenue and Cross-sell
++    Revenue, in any supported locale) is mapped as a statistics report,
++    even when a conversion value column is also present. A report with a
++    conversion value column and no split is mapped as a base report.
++    """
++
++    def __init__(
++        self,
++        base_mapper: GoogleAdsProductReportMapper | None = None,
++        statistics_mapper: GoogleAdsStatisticsReportMapper | None = None,
++    ) -> None:
++        """Initialize the detector with both concrete mappers."""
++        self._base_mapper = base_mapper or GoogleAdsProductReportMapper()
++        self._statistics_mapper = statistics_mapper or GoogleAdsStatisticsReportMapper()
++
++    def map(self, report: pd.DataFrame) -> pd.DataFrame:
++        """Map the report with the mapper matching its detected type."""
++        if self.detect(report) is ReportType.STATISTICS:
++            return self._statistics_mapper.map(report)
++
++        return self._base_mapper.map(report)
++
++    def detect(self, report: pd.DataFrame) -> ReportType:
++        """Detect the report type from the columns present.
++
++        Raises:
++            MissingColumnsError: If the columns match neither format; the
++                error lists the missing required columns of the closest
++                format and names both formats in the message.
++        """
++        normalized_columns = set(normalize_column_names(report.head(0)).columns)
++        statistics_aliases = self._statistics_mapper._COLUMN_ALIASES  # noqa: SLF001
++
++        has_revenue_split = all(
++            self._is_derivable(canonical, statistics_aliases, normalized_columns)
++            for canonical in ("direct_revenue", "assist_revenue")
++        )
++        if has_revenue_split:
++            return ReportType.STATISTICS
++
++        base_aliases = self._base_mapper._COLUMN_ALIASES  # noqa: SLF001
++        if self._is_derivable("conversion_value", base_aliases, normalized_columns):
++            return ReportType.BASE
++
++        raise self._unrecognized_format_error(report, normalized_columns)
++
++    @staticmethod
++    def _is_derivable(
++        canonical_name: str,
++        aliases: dict[str, tuple[str, ...]],
++        normalized_columns: set[str],
++    ) -> bool:
++        """Return True when a canonical column can be derived from the report."""
++        candidate_names = (canonical_name, *aliases.get(canonical_name, ()))
++        return any(name in normalized_columns for name in candidate_names)
++
++    def _unrecognized_format_error(
++        self,
++        report: pd.DataFrame,
++        normalized_columns: set[str],
++    ) -> MissingColumnsError:
++        """Build the error for a report matching neither format."""
++        base_missing = self._missing_columns(
++            _BASE_REQUIRED_COLUMNS,
++            self._base_mapper._COLUMN_ALIASES,  # noqa: SLF001
++            normalized_columns,
++        )
++        statistics_missing = self._missing_columns(
++            self._statistics_mapper._REQUIRED_STATISTICS_COLUMNS,  # noqa: SLF001
++            self._statistics_mapper._COLUMN_ALIASES,  # noqa: SLF001
++            normalized_columns,
++        )
++        closest_missing = (
++            statistics_missing
++            if len(statistics_missing) < len(base_missing)
++            else base_missing
++        )
++        message = (
++            "The file matches neither a base Google Ads product report nor a "
++            "statistics report. "
++            f"Base report is missing: {', '.join(base_missing)}. "
++            f"Statistics report is missing: {', '.join(statistics_missing)}."
++        )
++        return MissingColumnsError(
++            message,
++            missing_columns=closest_missing,
++            available_columns=[str(column) for column in report.columns],
++        )
++
++    def _missing_columns(
++        self,
++        required_columns: tuple[str, ...],
++        aliases: dict[str, tuple[str, ...]],
++        normalized_columns: set[str],
++    ) -> list[str]:
++        """Return the required columns a report cannot provide."""
++        return sorted(
++            canonical
++            for canonical in required_columns
++            if not self._is_derivable(canonical, aliases, normalized_columns)
++        )
+diff --git a/app/services/report_validator.py b/app/services/report_validator.py
+index 141e0de..b237ac5 100644
+--- a/app/services/report_validator.py
++++ b/app/services/report_validator.py
+@@ -13,6 +13,8 @@ _METRIC_COLUMNS: tuple[str, ...] = (
+     "cost",
+     "conversions",
+     "conversion_value",
++    "direct_revenue",
++    "assist_revenue",
+ )
+ _MAX_LISTED_SKUS = 5
+ 
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index da405d3..feab02b 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -104,7 +104,8 @@ def test_validate_fails_with_exit_code_one(tmp_path: Path) -> None:
+     result = runner.invoke(application, [str(bad_path), "--validate"])
+ 
+     assert result.exit_code == 1
+-    assert "Missing required columns" in result.output
++    assert "matches neither" in result.output
++    assert "Base report is missing" in result.output
+     assert "Validation failed" in result.output
+ 
+ 
+diff --git a/tests/test_logging.py b/tests/test_logging.py
+index 579c45f..b094b44 100644
+--- a/tests/test_logging.py
++++ b/tests/test_logging.py
+@@ -123,4 +123,4 @@ def test_validation_issues_are_logged_as_warnings(
+     log_text = _log_text(tmp_path)
+     assert exit_code == 1
+     assert "WARNING ppc_optimizer: bad.csv" in log_text
+-    assert "Missing required columns" in log_text
++    assert "matches neither" in log_text
+diff --git a/tests/test_product_report_loader.py b/tests/test_product_report_loader.py
+index 7732407..ec9f237 100644
+--- a/tests/test_product_report_loader.py
++++ b/tests/test_product_report_loader.py
+@@ -192,7 +192,8 @@ def test_load_reports_missing_required_google_ads_columns(tmp_path: Path) -> Non
+     with pytest.raises(GoogleAdsProductReportMappingError) as error:
+         GoogleAdsProductReportLoader().load(source_path)
+ 
+-    assert "Missing required columns: conversion_value, conversions." in str(error.value)
++    assert "Base report is missing: conversion_value, conversions." in str(error.value)
++    assert "Statistics report is missing" in str(error.value)
+ 
+ 
+ def test_load_rejects_unsupported_file_types(tmp_path: Path) -> None:
+diff --git a/tests/test_report_type_detection.py b/tests/test_report_type_detection.py
+new file mode 100644
+index 0000000..993ba8a
+--- /dev/null
++++ b/tests/test_report_type_detection.py
+@@ -0,0 +1,148 @@
++"""Tests for automatic Google Ads report type detection."""
++
++from pathlib import Path
++
++import pandas as pd
++import pytest
++
++from app.loaders.google_ads_product_report_mapper import MissingColumnsError
++from app.loaders.report_type_detection import AutoDetectingReportMapper, ReportType
++from app.services.multi_campaign_analyzer import MultiCampaignAnalyzer
++from main import run
++
++_NBSP = "\u00a0"
++
++
++def _base_frame() -> pd.DataFrame:
++    """A report with the conversion value column only."""
++    return pd.DataFrame(
++        [
++            {
++                "Item ID": "BASE-1",
++                "Impressions": 1000,
++                "Clicks": 10,
++                "Cost": 100.0,
++                "Conversions": 1.0,
++                "Conversion Value": 500.0,
++            }
++        ]
++    )
++
++
++def _statistics_frame(**overrides: float) -> pd.DataFrame:
++    """A report with the revenue split columns."""
++    row = {
++        "Offer ID": "STAT-1",
++        "Impressions": 1000,
++        "Clicks": 10,
++        "Cost": 100.0,
++        "Conversions": 1.0,
++        "Direct Revenue": 800.0,
++        "Cross-sell Revenue": 200.0,
++    }
++    row.update(overrides)
++    return pd.DataFrame([row])
++
++
++def test_detects_base_report() -> None:
++    """A conversion value column selects the base mode."""
++    assert AutoDetectingReportMapper().detect(_base_frame()) is ReportType.BASE
++
++
++def test_detects_statistics_report() -> None:
++    """The revenue split columns select the statistics mode."""
++    detected = AutoDetectingReportMapper().detect(_statistics_frame())
++
++    assert detected is ReportType.STATISTICS
++
++
++def test_statistics_mode_wins_when_both_sets_present() -> None:
++    """A file with both column sets is treated as a statistics report."""
++    frame = _statistics_frame()
++    frame["Conversion Value"] = 100.0
++
++    assert AutoDetectingReportMapper().detect(frame) is ReportType.STATISTICS
++
++
++def test_unrecognized_format_lists_missing_columns_of_both_formats() -> None:
++    """A file matching neither format names both missing column sets."""
++    frame = pd.DataFrame([{"Item ID": "X-1", "Clicks": 5}])
++
++    with pytest.raises(MissingColumnsError) as error_info:
++        AutoDetectingReportMapper().detect(frame)
++
++    message = str(error_info.value)
++    assert "matches neither" in message
++    assert "Base report is missing" in message
++    assert "Statistics report is missing" in message
++    assert "conversion_value" in message
++    assert "direct_revenue" in message
++    assert error_info.value.missing_columns
++
++
++def test_statistics_file_flows_through_the_analyzer_without_flags(
++    tmp_path: Path,
++) -> None:
++    """A statistics export is analyzed end to end; decisions use the split sum."""
++    source_path = tmp_path / "statistics.csv"
++    _statistics_frame().to_csv(source_path, index=False)
++
++    report = MultiCampaignAnalyzer().analyze([source_path])
++
++    decision = report.decisions[0]
++    assert decision.effective_revenue == 1000.0
++    assert report.overall_summary.total_products == 1
++
++
++def test_split_columns_override_conversion_value_in_decisions(
++    tmp_path: Path,
++) -> None:
++    """With both sets present the decision revenue is direct plus assist."""
++    frame = _statistics_frame()
++    frame["Conversion Value"] = 100.0
++    source_path = tmp_path / "mixed.csv"
++    frame.to_csv(source_path, index=False)
++
++    report = MultiCampaignAnalyzer().analyze([source_path])
++
++    assert report.decisions[0].effective_revenue == 1000.0
++
++
++def test_statistics_file_with_locale_numbers_via_cli(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    """The CLI analyzes a locale-formatted statistics export without flags."""
++    monkeypatch.chdir(tmp_path)
++    source_path = tmp_path / "statistics.csv"
++    _statistics_frame(
++        **{
++            "Cost": f"грн1{_NBSP}250,50",
++            "Direct Revenue": f"грн10{_NBSP}000,00",
++            "Cross-sell Revenue": "2 500,25",
++        }
++    ).to_csv(source_path, index=False)
++
++    exit_code = run(source_path, dry_run=True)
++
++    captured = capsys.readouterr()
++    assert exit_code == 0
++    assert "Products: 1" in captured.out
++
++
++def test_validate_accepts_statistics_exports(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    """--validate recognizes statistics files automatically."""
++    monkeypatch.chdir(tmp_path)
++    source_path = tmp_path / "statistics.csv"
++    _statistics_frame().to_csv(source_path, index=False)
++
++    exit_code = run(source_path, validate=True)
++
++    captured = capsys.readouterr()
++    assert exit_code == 0
++    assert "Validation passed" in captured.out
+diff --git a/tests/test_report_validator.py b/tests/test_report_validator.py
+index 1ef41d6..9a83d2d 100644
+--- a/tests/test_report_validator.py
++++ b/tests/test_report_validator.py
+@@ -49,7 +49,7 @@ def test_missing_required_columns_are_reported(tmp_path: Path) -> None:
+     result = ReportValidator().validate([source_path])
+ 
+     assert not result.is_valid
+-    assert "Missing required columns" in result.issues[0].message
++    assert "matches neither" in result.issues[0].message
+ 
+ 
+ def test_duplicated_skus_are_reported(tmp_path: Path) -> None:
