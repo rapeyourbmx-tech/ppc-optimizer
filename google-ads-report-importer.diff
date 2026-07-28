@@ -1,0 +1,320 @@
+diff --git a/app/importers/__init__.py b/app/importers/__init__.py
+new file mode 100644
+index 0000000..da29a8a
+--- /dev/null
++++ b/app/importers/__init__.py
+@@ -0,0 +1,5 @@
++"""Importers of external advertising statistics."""
++
++from app.importers.google_ads_report_importer import GoogleAdsReportImporter
++
++__all__ = ["GoogleAdsReportImporter"]
+diff --git a/app/importers/google_ads_report_importer.py b/app/importers/google_ads_report_importer.py
+new file mode 100644
+index 0000000..b991cf3
+--- /dev/null
++++ b/app/importers/google_ads_report_importer.py
+@@ -0,0 +1,136 @@
++"""Import of product statistics from Google Ads CSV/XLSX report files."""
++
++from pathlib import Path
++
++import pandas as pd
++
++from app.loaders import metric_normalizer
++from app.loaders.google_ads_product_report_mapper import (
++    GoogleAdsProductReportMapper,
++    MissingColumnsError,
++)
++from app.loaders.product_report_loader import GoogleAdsProductReportLoader
++from app.models.product_statistics import ProductStatistics
++
++_REVENUE_COLUMNS: tuple[str, ...] = ("direct_revenue", "assist_revenue")
++
++
++class GoogleAdsStatisticsReportMapper(GoogleAdsProductReportMapper):
++    """Header mapping for statistics exports with revenue split columns.
++
++    Extends the base export mapper with Offer ID, Direct Revenue, and
++    Cross-sell Revenue headers (the last one maps to the internal
++    assist_revenue field) and requires the statistics field set instead
++    of the base report field set.
++    """
++
++    _COLUMN_ALIASES: dict[str, tuple[str, ...]] = {
++        **GoogleAdsProductReportMapper._COLUMN_ALIASES,
++        "product_id": (
++            *GoogleAdsProductReportMapper._COLUMN_ALIASES["product_id"],
++            "offer_id",
++            "ідентифікатор_пропозиції",
++        ),
++        "direct_revenue": (
++            "direct_revenue",
++            "прямий_дохід",
++            "дохід_від_прямих_продажів",
++        ),
++        "assist_revenue": (
++            "cross_sell_revenue",
++            "assist_revenue",
++            "дохід_від_перехресних_продажів",
++            "перехресний_дохід",
++        ),
++    }
++    _REQUIRED_STATISTICS_COLUMNS: tuple[str, ...] = (
++        "product_id",
++        "cost",
++        "clicks",
++        "impressions",
++        "direct_revenue",
++        "assist_revenue",
++        "conversions",
++    )
++
++    def _validate_required_columns(
++        self,
++        report: pd.DataFrame,
++        original_columns: list[str],
++    ) -> None:
++        """Ensure the export carries every statistics field."""
++        missing_columns = sorted(set(self._REQUIRED_STATISTICS_COLUMNS) - set(report.columns))
++        if missing_columns:
++            names = ", ".join(missing_columns)
++            message = (
++                "The file is not a complete Google Ads statistics report. "
++                f"Missing required columns: {names}."
++            )
++            raise MissingColumnsError(
++                message,
++                missing_columns=missing_columns,
++                available_columns=original_columns,
++            )
++
++
++class GoogleAdsReportImporter:
++    """Import product statistics from a Google Ads CSV or XLSX export.
++
++    The importer is file-based by design and never talks to the
++    Google Ads API. It reuses the existing report loader (header
++    detection, delimiter sniffing, locale-aware numbers) with a
++    statistics-specific header mapping.
++    """
++
++    def __init__(self, loader: GoogleAdsProductReportLoader | None = None) -> None:
++        """Initialize the importer with a statistics-aware report loader."""
++        self._loader = loader or GoogleAdsProductReportLoader(
++            mapper=GoogleAdsStatisticsReportMapper()
++        )
++
++    def import_report(self, source_path: Path) -> list[ProductStatistics]:
++        """Read one CSV or XLSX export into product statistics records.
++
++        Args:
++            source_path: Path to the Google Ads statistics export.
++
++        Returns:
++            One ProductStatistics record per export row, in file order.
++
++        Raises:
++            MissingColumnsError: If a required statistics column is absent.
++            UnsupportedReportFormatError: If the file is not CSV or XLSX.
++        """
++        frame = self._loader.load(source_path)
++        frame = self._normalize_revenue_columns(frame)
++
++        return [
++            ProductStatistics(
++                offer_id=str(row.product_id),
++                cost=float(row.cost),
++                clicks=int(row.clicks),
++                impressions=int(row.impressions),
++                direct_revenue=float(row.direct_revenue),
++                assist_revenue=float(row.assist_revenue),
++                conversions=float(row.conversions),
++            )
++            for row in frame.fillna({"product_id": "", "cost": 0.0, "clicks": 0, "impressions": 0})
++            .fillna(0.0)
++            .itertuples(index=False)
++        ]
++
++    @staticmethod
++    def _normalize_revenue_columns(frame: pd.DataFrame) -> pd.DataFrame:
++        """Convert the revenue split columns to numeric values.
++
++        The shared loader normalizes only the base metric columns, so the
++        statistics-specific revenue columns are normalized here with the
++        same locale-aware routine (module-internal by design).
++        """
++        normalized_frame = frame.copy()
++        for column_name in _REVENUE_COLUMNS:
++            normalized_frame[column_name] = metric_normalizer._to_numeric(  # noqa: SLF001
++                normalized_frame[column_name]
++            )
++
++        return normalized_frame
+diff --git a/app/models/product_statistics.py b/app/models/product_statistics.py
+new file mode 100644
+index 0000000..dddfd02
+--- /dev/null
++++ b/app/models/product_statistics.py
+@@ -0,0 +1,27 @@
++"""Internal model of imported product advertising statistics."""
++
++from dataclasses import dataclass
++
++
++@dataclass(frozen=True, slots=True)
++class ProductStatistics:
++    """Advertising statistics of one product from a Google Ads export.
++
++    assist_revenue is the internal business name of the value sourced
++    from the Google Ads "Cross-sell Revenue" column. If a separate
++    Assisted Revenue metric appears later, the model will be extended;
++    for now this is the only assist field.
++    """
++
++    offer_id: str
++    cost: float
++    clicks: int
++    impressions: int
++    direct_revenue: float
++    assist_revenue: float
++    conversions: float
++
++    @property
++    def effective_revenue(self) -> float:
++        """Direct revenue plus assist revenue."""
++        return self.direct_revenue + self.assist_revenue
+diff --git a/tests/test_google_ads_report_importer.py b/tests/test_google_ads_report_importer.py
+new file mode 100644
+index 0000000..3077c2e
+--- /dev/null
++++ b/tests/test_google_ads_report_importer.py
+@@ -0,0 +1,128 @@
++"""Tests for the Google Ads statistics report importer."""
++
++from pathlib import Path
++
++import pandas as pd
++import pytest
++
++from app.importers import GoogleAdsReportImporter
++from app.loaders.google_ads_product_report_mapper import MissingColumnsError
++
++_NBSP = "\u00a0"
++
++
++def _statistics_rows() -> list[dict]:
++    """Two well-formed statistics rows with English headers."""
++    return [
++        {
++            "Offer ID": "SKU-100",
++            "Cost": 1250.5,
++            "Clicks": 12,
++            "Impressions": 3400,
++            "Direct Revenue": 10000.0,
++            "Cross-sell Revenue": 2500.25,
++            "Conversions": 1.5,
++        },
++        {
++            "Offer ID": "SKU-200",
++            "Cost": 80.0,
++            "Clicks": 4,
++            "Impressions": 900,
++            "Direct Revenue": 0.0,
++            "Cross-sell Revenue": 0.0,
++            "Conversions": 0.0,
++        },
++    ]
++
++
++def test_import_reads_every_field_from_csv(tmp_path: Path) -> None:
++    """CSV exports produce one record per row with every field populated."""
++    source_path = tmp_path / "statistics.csv"
++    pd.DataFrame(_statistics_rows()).to_csv(source_path, index=False)
++
++    records = GoogleAdsReportImporter().import_report(source_path)
++
++    assert len(records) == 2
++    first = records[0]
++    assert first.offer_id == "SKU-100"
++    assert first.cost == 1250.5
++    assert first.clicks == 12
++    assert first.impressions == 3400
++    assert first.direct_revenue == 10000.0
++    assert first.assist_revenue == 2500.25
++    assert first.conversions == 1.5
++
++
++def test_import_reads_xlsx_exports(tmp_path: Path) -> None:
++    """XLSX exports import identically to CSV."""
++    source_path = tmp_path / "statistics.xlsx"
++    pd.DataFrame(_statistics_rows()).to_excel(source_path, index=False)
++
++    records = GoogleAdsReportImporter().import_report(source_path)
++
++    assert [record.offer_id for record in records] == ["SKU-100", "SKU-200"]
++    assert records[0].effective_revenue == 12500.25
++
++
++def test_effective_revenue_is_direct_plus_assist(tmp_path: Path) -> None:
++    """effectiveRevenue equals directRevenue plus assistRevenue."""
++    source_path = tmp_path / "statistics.csv"
++    pd.DataFrame(_statistics_rows()).to_csv(source_path, index=False)
++
++    records = GoogleAdsReportImporter().import_report(source_path)
++
++    for record in records:
++        assert record.effective_revenue == (record.direct_revenue + record.assist_revenue)
++
++
++def test_import_normalizes_locale_formatted_numbers(tmp_path: Path) -> None:
++    """Currency prefixes, NBSP separators, and decimal commas are parsed."""
++    source_path = tmp_path / "statistics.csv"
++    pd.DataFrame(
++        [
++            {
++                "Offer ID": "SKU-UA",
++                "Cost": f"грн1{_NBSP}250,50",
++                "Clicks": "12",
++                "Impressions": f"3{_NBSP}400",
++                "Direct Revenue": f"грн10{_NBSP}000,00",
++                "Cross-sell Revenue": "2 500,25",
++                "Conversions": "1,5",
++            }
++        ]
++    ).to_csv(source_path, index=False)
++
++    records = GoogleAdsReportImporter().import_report(source_path)
++
++    record = records[0]
++    assert record.cost == 1250.5
++    assert record.impressions == 3400
++    assert record.effective_revenue == 12500.25
++
++
++def test_import_rejects_export_without_cross_sell_revenue(tmp_path: Path) -> None:
++    """A missing statistics column raises the enriched mapping error."""
++    rows = [
++        {key: value for key, value in row.items() if key != "Cross-sell Revenue"}
++        for row in _statistics_rows()
++    ]
++    source_path = tmp_path / "statistics.csv"
++    pd.DataFrame(rows).to_csv(source_path, index=False)
++
++    with pytest.raises(MissingColumnsError) as error_info:
++        GoogleAdsReportImporter().import_report(source_path)
++
++    assert "assist_revenue" in error_info.value.missing_columns
++
++
++def test_import_accepts_base_report_identifier_aliases(tmp_path: Path) -> None:
++    """Item ID exports import as well as Offer ID exports."""
++    rows = _statistics_rows()
++    for row in rows:
++        row["Item ID"] = row.pop("Offer ID")
++    source_path = tmp_path / "statistics.csv"
++    pd.DataFrame(rows).to_csv(source_path, index=False)
++
++    records = GoogleAdsReportImporter().import_report(source_path)
++
++    assert records[0].offer_id == "SKU-100"
