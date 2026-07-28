@@ -9,10 +9,10 @@ from app.models.product_decision import ProductDecision
 from app.utils.report_columns import (
     CLICK_COLUMNS,
     CONVERSION_COLUMNS,
-    CONVERSION_VALUE_COLUMNS,
     COST_COLUMNS,
     IMPRESSION_COLUMNS,
     SKU_COLUMNS,
+    effective_revenue_values,
     numeric_values,
     resolve_column,
 )
@@ -44,18 +44,13 @@ class AuditEngine:
             CONVERSION_COLUMNS,
             "conversions",
         )
-        revenue_column = resolve_column(
-            products,
-            CONVERSION_VALUE_COLUMNS,
-            "conversion value",
-        )
 
         sku = products[sku_column].fillna("").astype(str)
         impressions = numeric_values(products[impression_column])
         clicks = numeric_values(products[click_column])
         cost = numeric_values(products[cost_column])
         conversions = numeric_values(products[conversion_column])
-        revenue = numeric_values(products[revenue_column])
+        revenue = effective_revenue_values(products)
 
         ctr = clicks.divide(impressions.where(impressions != 0)).multiply(100).fillna(0.0)
         roas = revenue.divide(cost.where(cost != 0)).multiply(100).fillna(0.0)
@@ -121,8 +116,8 @@ class AuditEngine:
 
     @staticmethod
     def _total_scale_revenue(decisions: list[ProductDecision]) -> float:
-        """Return the conversion value represented by scale decisions."""
-        return sum((decision.conversion_value for decision in decisions), start=0.0)
+        """Return the effective revenue represented by scale decisions."""
+        return sum((decision.effective_revenue for decision in decisions), start=0.0)
 
     @staticmethod
     def _empty_report() -> AuditReport:

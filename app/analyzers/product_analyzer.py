@@ -24,15 +24,15 @@ class ProductAnalyzer:
         clicks: int,
         cost: float,
         conversions: float,
-        conversion_value: float,
+        effective_revenue: float,
     ) -> ProductDecision:
         """Create a decision using the configured product performance rules."""
-        roas = self._calculate_roas(cost=cost, conversion_value=conversion_value)
+        roas = self._calculate_roas(cost=cost, effective_revenue=effective_revenue)
         status, reason, explanation = self._decide(
             clicks=clicks,
             cost=cost,
             conversions=conversions,
-            conversion_value=conversion_value,
+            effective_revenue=effective_revenue,
             roas=roas,
         )
 
@@ -41,7 +41,7 @@ class ProductAnalyzer:
             clicks=clicks,
             cost=cost,
             conversions=conversions,
-            conversion_value=conversion_value,
+            effective_revenue=effective_revenue,
             roas=roas,
             status=status,
             reason=reason,
@@ -49,12 +49,12 @@ class ProductAnalyzer:
         )
 
     @staticmethod
-    def _calculate_roas(*, cost: float, conversion_value: float) -> float:
-        """Calculate ROAS as a percentage without dividing by zero."""
+    def _calculate_roas(*, cost: float, effective_revenue: float) -> float:
+        """Calculate ROAS as effective_revenue / cost in percent."""
         if cost == 0:
             return 0.0
 
-        return (conversion_value / cost) * 100
+        return (effective_revenue / cost) * 100
 
     def _decide(
         self,
@@ -62,7 +62,7 @@ class ProductAnalyzer:
         clicks: int,
         cost: float,
         conversions: float,
-        conversion_value: float,
+        effective_revenue: float,
         roas: float,
     ) -> tuple[ProductStatus, str, str]:
         """Select the status, reason, and explanation for one product's metrics."""
@@ -95,15 +95,15 @@ class ProductAnalyzer:
         performance_explanation = self._explainer.performance_summary(
             roas=roas,
             cost=cost,
-            conversion_value=conversion_value,
+            effective_revenue=effective_revenue,
             conversions=conversions,
         )
 
-        if roas >= scale.min_roas and conversion_value >= scale.min_conversion_value:
+        if roas >= scale.min_roas and effective_revenue >= scale.min_conversion_value:
             return (
                 ProductStatus.SCALE,
                 (
-                    f"ROAS of at least {scale.min_roas:g}% with conversion value "
+                    f"ROAS of at least {scale.min_roas:g}% with effective revenue "
                     f"of at least {scale.min_conversion_value:g}."
                 ),
                 performance_explanation,

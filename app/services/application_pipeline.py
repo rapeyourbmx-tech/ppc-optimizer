@@ -15,9 +15,9 @@ from app.services.recommendation_engine import RecommendationEngine
 from app.utils.report_columns import (
     CLICK_COLUMNS,
     CONVERSION_COLUMNS,
-    CONVERSION_VALUE_COLUMNS,
     COST_COLUMNS,
     SKU_COLUMNS,
+    effective_revenue_values,
     numeric_values,
     resolve_column,
 )
@@ -69,17 +69,12 @@ class ApplicationPipeline:
         click_column = resolve_column(products, CLICK_COLUMNS, "clicks")
         cost_column = resolve_column(products, COST_COLUMNS, "cost")
         conversion_column = resolve_column(products, CONVERSION_COLUMNS, "conversions")
-        revenue_column = resolve_column(
-            products,
-            CONVERSION_VALUE_COLUMNS,
-            "conversion value",
-        )
 
         sku = products[sku_column].fillna("").astype(str)
         clicks = numeric_values(products[click_column])
         cost = numeric_values(products[cost_column])
         conversions = numeric_values(products[conversion_column])
-        conversion_value = numeric_values(products[revenue_column])
+        effective_revenue = effective_revenue_values(products)
 
         return [
             self._product_analyzer.analyze(
@@ -87,20 +82,20 @@ class ApplicationPipeline:
                 clicks=int(product_clicks),
                 cost=float(product_cost),
                 conversions=float(product_conversions),
-                conversion_value=float(product_conversion_value),
+                effective_revenue=float(product_effective_revenue),
             )
             for (
                 product_sku,
                 product_clicks,
                 product_cost,
                 product_conversions,
-                product_conversion_value,
+                product_effective_revenue,
             ) in zip(
                 sku,
                 clicks,
                 cost,
                 conversions,
-                conversion_value,
+                effective_revenue,
                 strict=True,
             )
         ]

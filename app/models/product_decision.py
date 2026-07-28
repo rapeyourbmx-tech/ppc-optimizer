@@ -21,7 +21,7 @@ class ProductDecision:
     clicks: int
     cost: float
     conversions: float
-    conversion_value: float
+    effective_revenue: float
     roas: float
     status: ProductStatus
     reason: str

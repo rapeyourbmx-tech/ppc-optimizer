@@ -11,7 +11,7 @@ class DecisionExplainer:
         *,
         roas: float,
         cost: float,
-        conversion_value: float,
+        effective_revenue: float,
         conversions: float,
     ) -> str:
         """Explain a performance-based decision (KEEP, SCALE, low-ROAS WATCH)."""
@@ -19,7 +19,7 @@ class DecisionExplainer:
             (
                 f"ROAS = {_format_metric(roas)}",
                 f"Cost = {_format_metric(cost)}",
-                f"Revenue = {_format_metric(conversion_value)}",
+                f"Revenue = {_format_metric(effective_revenue)}",
                 f"Conversions = {_format_metric(conversions)}",
             )
         )

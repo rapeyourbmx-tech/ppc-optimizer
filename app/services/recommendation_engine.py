@@ -33,8 +33,8 @@ class RecommendationEngine:
             scale=len(scale_decisions),
             cost_keep=self._total(keep_decisions, lambda decision: decision.cost),
             cost_pause=self._total(pause_decisions, lambda decision: decision.cost),
-            revenue_keep=self._total(keep_decisions, lambda decision: decision.conversion_value),
-            revenue_pause=self._total(pause_decisions, lambda decision: decision.conversion_value),
+            revenue_keep=self._total(keep_decisions, lambda decision: decision.effective_revenue),
+            revenue_pause=self._total(pause_decisions, lambda decision: decision.effective_revenue),
             top_scale_products=sorted(
                 scale_decisions,
                 key=lambda decision: decision.roas,

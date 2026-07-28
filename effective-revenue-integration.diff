@@ -1,0 +1,510 @@
+diff --git a/app/analyzers/audit_engine.py b/app/analyzers/audit_engine.py
+index 3afd50d..0b32dbb 100644
+--- a/app/analyzers/audit_engine.py
++++ b/app/analyzers/audit_engine.py
+@@ -9,10 +9,10 @@ from app.models.product_decision import ProductDecision
+ from app.utils.report_columns import (
+     CLICK_COLUMNS,
+     CONVERSION_COLUMNS,
+-    CONVERSION_VALUE_COLUMNS,
+     COST_COLUMNS,
+     IMPRESSION_COLUMNS,
+     SKU_COLUMNS,
++    effective_revenue_values,
+     numeric_values,
+     resolve_column,
+ )
+@@ -44,18 +44,13 @@ class AuditEngine:
+             CONVERSION_COLUMNS,
+             "conversions",
+         )
+-        revenue_column = resolve_column(
+-            products,
+-            CONVERSION_VALUE_COLUMNS,
+-            "conversion value",
+-        )
+ 
+         sku = products[sku_column].fillna("").astype(str)
+         impressions = numeric_values(products[impression_column])
+         clicks = numeric_values(products[click_column])
+         cost = numeric_values(products[cost_column])
+         conversions = numeric_values(products[conversion_column])
+-        revenue = numeric_values(products[revenue_column])
++        revenue = effective_revenue_values(products)
+ 
+         ctr = clicks.divide(impressions.where(impressions != 0)).multiply(100).fillna(0.0)
+         roas = revenue.divide(cost.where(cost != 0)).multiply(100).fillna(0.0)
+@@ -121,8 +116,8 @@ class AuditEngine:
+ 
+     @staticmethod
+     def _total_scale_revenue(decisions: list[ProductDecision]) -> float:
+-        """Return the conversion value represented by scale decisions."""
+-        return sum((decision.conversion_value for decision in decisions), start=0.0)
++        """Return the effective revenue represented by scale decisions."""
++        return sum((decision.effective_revenue for decision in decisions), start=0.0)
+ 
+     @staticmethod
+     def _empty_report() -> AuditReport:
+diff --git a/app/analyzers/decision_explainer.py b/app/analyzers/decision_explainer.py
+index 2c6b6c8..5c037c1 100644
+--- a/app/analyzers/decision_explainer.py
++++ b/app/analyzers/decision_explainer.py
+@@ -11,7 +11,7 @@ class DecisionExplainer:
+         *,
+         roas: float,
+         cost: float,
+-        conversion_value: float,
++        effective_revenue: float,
+         conversions: float,
+     ) -> str:
+         """Explain a performance-based decision (KEEP, SCALE, low-ROAS WATCH)."""
+@@ -19,7 +19,7 @@ class DecisionExplainer:
+             (
+                 f"ROAS = {_format_metric(roas)}",
+                 f"Cost = {_format_metric(cost)}",
+-                f"Revenue = {_format_metric(conversion_value)}",
++                f"Revenue = {_format_metric(effective_revenue)}",
+                 f"Conversions = {_format_metric(conversions)}",
+             )
+         )
+diff --git a/app/analyzers/product_analyzer.py b/app/analyzers/product_analyzer.py
+index e74f56f..7254749 100644
+--- a/app/analyzers/product_analyzer.py
++++ b/app/analyzers/product_analyzer.py
+@@ -24,15 +24,15 @@ class ProductAnalyzer:
+         clicks: int,
+         cost: float,
+         conversions: float,
+-        conversion_value: float,
++        effective_revenue: float,
+     ) -> ProductDecision:
+         """Create a decision using the configured product performance rules."""
+-        roas = self._calculate_roas(cost=cost, conversion_value=conversion_value)
++        roas = self._calculate_roas(cost=cost, effective_revenue=effective_revenue)
+         status, reason, explanation = self._decide(
+             clicks=clicks,
+             cost=cost,
+             conversions=conversions,
+-            conversion_value=conversion_value,
++            effective_revenue=effective_revenue,
+             roas=roas,
+         )
+ 
+@@ -41,7 +41,7 @@ class ProductAnalyzer:
+             clicks=clicks,
+             cost=cost,
+             conversions=conversions,
+-            conversion_value=conversion_value,
++            effective_revenue=effective_revenue,
+             roas=roas,
+             status=status,
+             reason=reason,
+@@ -49,12 +49,12 @@ class ProductAnalyzer:
+         )
+ 
+     @staticmethod
+-    def _calculate_roas(*, cost: float, conversion_value: float) -> float:
+-        """Calculate ROAS as a percentage without dividing by zero."""
++    def _calculate_roas(*, cost: float, effective_revenue: float) -> float:
++        """Calculate ROAS as effective_revenue / cost in percent."""
+         if cost == 0:
+             return 0.0
+ 
+-        return (conversion_value / cost) * 100
++        return (effective_revenue / cost) * 100
+ 
+     def _decide(
+         self,
+@@ -62,7 +62,7 @@ class ProductAnalyzer:
+         clicks: int,
+         cost: float,
+         conversions: float,
+-        conversion_value: float,
++        effective_revenue: float,
+         roas: float,
+     ) -> tuple[ProductStatus, str, str]:
+         """Select the status, reason, and explanation for one product's metrics."""
+@@ -95,15 +95,15 @@ class ProductAnalyzer:
+         performance_explanation = self._explainer.performance_summary(
+             roas=roas,
+             cost=cost,
+-            conversion_value=conversion_value,
++            effective_revenue=effective_revenue,
+             conversions=conversions,
+         )
+ 
+-        if roas >= scale.min_roas and conversion_value >= scale.min_conversion_value:
++        if roas >= scale.min_roas and effective_revenue >= scale.min_conversion_value:
+             return (
+                 ProductStatus.SCALE,
+                 (
+-                    f"ROAS of at least {scale.min_roas:g}% with conversion value "
++                    f"ROAS of at least {scale.min_roas:g}% with effective revenue "
+                     f"of at least {scale.min_conversion_value:g}."
+                 ),
+                 performance_explanation,
+diff --git a/app/models/product_decision.py b/app/models/product_decision.py
+index eb26325..1d8c2c9 100644
+--- a/app/models/product_decision.py
++++ b/app/models/product_decision.py
+@@ -21,7 +21,7 @@ class ProductDecision:
+     clicks: int
+     cost: float
+     conversions: float
+-    conversion_value: float
++    effective_revenue: float
+     roas: float
+     status: ProductStatus
+     reason: str
+diff --git a/app/reporting/excel_workbook_exporter.py b/app/reporting/excel_workbook_exporter.py
+index 933a464..d57bc96 100644
+--- a/app/reporting/excel_workbook_exporter.py
++++ b/app/reporting/excel_workbook_exporter.py
+@@ -716,7 +716,7 @@ class ExcelWorkbookExporter:
+         if winners:
+             sheet.sheet_properties.tabColor = "006100"
+             selected = sorted(
+-                (pair for pair in paired if pair[0].conversion_value > 0),
++                (pair for pair in paired if pair[0].effective_revenue > 0),
+                 key=lambda pair: pair[0].roas,
+                 reverse=True,
+             )
+@@ -776,7 +776,7 @@ class ExcelWorkbookExporter:
+                 decision.clicks,
+                 decision.cost,
+                 decision.conversions,
+-                decision.conversion_value,
++                decision.effective_revenue,
+                 f"=IFERROR(G{row_number}/E{row_number},0)",
+                 decision.reason,
+             )
+diff --git a/app/services/application_pipeline.py b/app/services/application_pipeline.py
+index f6c6f2a..c248b1b 100644
+--- a/app/services/application_pipeline.py
++++ b/app/services/application_pipeline.py
+@@ -15,9 +15,9 @@ from app.services.recommendation_engine import RecommendationEngine
+ from app.utils.report_columns import (
+     CLICK_COLUMNS,
+     CONVERSION_COLUMNS,
+-    CONVERSION_VALUE_COLUMNS,
+     COST_COLUMNS,
+     SKU_COLUMNS,
++    effective_revenue_values,
+     numeric_values,
+     resolve_column,
+ )
+@@ -69,17 +69,12 @@ class ApplicationPipeline:
+         click_column = resolve_column(products, CLICK_COLUMNS, "clicks")
+         cost_column = resolve_column(products, COST_COLUMNS, "cost")
+         conversion_column = resolve_column(products, CONVERSION_COLUMNS, "conversions")
+-        revenue_column = resolve_column(
+-            products,
+-            CONVERSION_VALUE_COLUMNS,
+-            "conversion value",
+-        )
+ 
+         sku = products[sku_column].fillna("").astype(str)
+         clicks = numeric_values(products[click_column])
+         cost = numeric_values(products[cost_column])
+         conversions = numeric_values(products[conversion_column])
+-        conversion_value = numeric_values(products[revenue_column])
++        effective_revenue = effective_revenue_values(products)
+ 
+         return [
+             self._product_analyzer.analyze(
+@@ -87,20 +82,20 @@ class ApplicationPipeline:
+                 clicks=int(product_clicks),
+                 cost=float(product_cost),
+                 conversions=float(product_conversions),
+-                conversion_value=float(product_conversion_value),
++                effective_revenue=float(product_effective_revenue),
+             )
+             for (
+                 product_sku,
+                 product_clicks,
+                 product_cost,
+                 product_conversions,
+-                product_conversion_value,
++                product_effective_revenue,
+             ) in zip(
+                 sku,
+                 clicks,
+                 cost,
+                 conversions,
+-                conversion_value,
++                effective_revenue,
+                 strict=True,
+             )
+         ]
+diff --git a/app/services/budget_optimizer.py b/app/services/budget_optimizer.py
+index 0be0257..ebebab7 100644
+--- a/app/services/budget_optimizer.py
++++ b/app/services/budget_optimizer.py
+@@ -49,7 +49,7 @@ class BudgetOptimizer:
+         campaign_name = campaign.metadata.name
+         decisions = campaign.report.decisions
+         spend = sum(decision.cost for decision in decisions)
+-        revenue = sum(decision.conversion_value for decision in decisions)
++        revenue = sum(decision.effective_revenue for decision in decisions)
+         conversions = sum(decision.conversions for decision in decisions)
+         roas = revenue / spend if spend else 0.0
+ 
+diff --git a/app/services/multi_campaign_analyzer.py b/app/services/multi_campaign_analyzer.py
+index 1917741..21778f3 100644
+--- a/app/services/multi_campaign_analyzer.py
++++ b/app/services/multi_campaign_analyzer.py
+@@ -149,7 +149,7 @@ def _build_overall_summary(decisions: Sequence[ProductDecision]) -> OverallSumma
+ 
+     return OverallSummary(
+         total_cost=sum(decision.cost for decision in decisions),
+-        total_revenue=sum(decision.conversion_value for decision in decisions),
++        total_revenue=sum(decision.effective_revenue for decision in decisions),
+         total_conversions=sum(decision.conversions for decision in decisions),
+         total_products=len(decisions),
+         keep=status_counts[ProductStatus.KEEP],
+diff --git a/app/services/recommendation_engine.py b/app/services/recommendation_engine.py
+index a15b3e8..68db13e 100644
+--- a/app/services/recommendation_engine.py
++++ b/app/services/recommendation_engine.py
+@@ -33,8 +33,8 @@ class RecommendationEngine:
+             scale=len(scale_decisions),
+             cost_keep=self._total(keep_decisions, lambda decision: decision.cost),
+             cost_pause=self._total(pause_decisions, lambda decision: decision.cost),
+-            revenue_keep=self._total(keep_decisions, lambda decision: decision.conversion_value),
+-            revenue_pause=self._total(pause_decisions, lambda decision: decision.conversion_value),
++            revenue_keep=self._total(keep_decisions, lambda decision: decision.effective_revenue),
++            revenue_pause=self._total(pause_decisions, lambda decision: decision.effective_revenue),
+             top_scale_products=sorted(
+                 scale_decisions,
+                 key=lambda decision: decision.roas,
+diff --git a/app/utils/report_columns.py b/app/utils/report_columns.py
+index bd8105b..d1d5117 100644
+--- a/app/utils/report_columns.py
++++ b/app/utils/report_columns.py
+@@ -8,6 +8,7 @@ CLICK_COLUMNS: tuple[str, ...] = ("clicks",)
+ COST_COLUMNS: tuple[str, ...] = ("cost",)
+ CONVERSION_COLUMNS: tuple[str, ...] = ("conversions",)
+ CONVERSION_VALUE_COLUMNS: tuple[str, ...] = ("conversion_value", "conversion_value_value")
++EFFECTIVE_REVENUE_COMPONENT_COLUMNS: tuple[str, ...] = ("direct_revenue", "assist_revenue")
+ 
+ 
+ class ReportColumnError(ValueError):
+@@ -31,3 +32,23 @@ def resolve_column(
+ def numeric_values(values: pd.Series) -> pd.Series:
+     """Convert a report metric to numeric values and replace blanks with zero."""
+     return pd.to_numeric(values, errors="coerce").fillna(0.0)
++
++
++def effective_revenue_values(products: pd.DataFrame) -> pd.Series:
++    """Return the effective revenue for every product row.
++
++    When the statistics revenue split is present (see ProductStatistics),
++    the effective revenue is direct_revenue + assist_revenue. Otherwise it
++    falls back to the export conversion value column, which carries the
++    full value in base Google Ads product reports.
++    """
++    if all(column_name in products.columns for column_name in EFFECTIVE_REVENUE_COMPONENT_COLUMNS):
++        direct_column, assist_column = EFFECTIVE_REVENUE_COMPONENT_COLUMNS
++        return numeric_values(products[direct_column]) + numeric_values(products[assist_column])
++
++    revenue_column = resolve_column(
++        products,
++        CONVERSION_VALUE_COLUMNS,
++        "conversion value",
++    )
++    return numeric_values(products[revenue_column])
+diff --git a/tests/test_audit_engine.py b/tests/test_audit_engine.py
+index 20c3d8c..bf99e57 100644
+--- a/tests/test_audit_engine.py
++++ b/tests/test_audit_engine.py
+@@ -14,7 +14,7 @@ def _summary() -> CampaignSummary:
+         clicks=20,
+         cost=100.0,
+         conversions=1.0,
+-        conversion_value=1300.0,
++        effective_revenue=1300.0,
+         roas=1300.0,
+         status=ProductStatus.SCALE,
+         reason="ROAS is above 1200%.",
+diff --git a/tests/test_product_analyzer.py b/tests/test_product_analyzer.py
+index 818a99a..458e7e4 100644
+--- a/tests/test_product_analyzer.py
++++ b/tests/test_product_analyzer.py
+@@ -12,7 +12,7 @@ def test_analyze_marks_low_cost_product_for_watch() -> None:
+         clicks=10,
+         cost=99.0,
+         conversions=2.0,
+-        conversion_value=1500.0,
++        effective_revenue=1500.0,
+     )
+ 
+     assert decision.status is ProductStatus.WATCH
+@@ -26,7 +26,7 @@ def test_analyze_pauses_product_with_cost_and_no_conversions() -> None:
+         clicks=20,
+         cost=350.0,
+         conversions=0.0,
+-        conversion_value=0.0,
++        effective_revenue=0.0,
+     )
+ 
+     assert decision.status is ProductStatus.PAUSE
+@@ -39,7 +39,7 @@ def test_analyze_scales_product_meeting_roas_and_revenue_thresholds() -> None:
+         clicks=30,
+         cost=350.0,
+         conversions=1.0,
+-        conversion_value=49095.0,
++        effective_revenue=49095.0,
+     )
+ 
+     assert decision.status is ProductStatus.SCALE
+@@ -52,7 +52,7 @@ def test_analyze_does_not_scale_without_enough_revenue() -> None:
+         clicks=30,
+         cost=350.0,
+         conversions=3.0,
+-        conversion_value=4999.0,
++        effective_revenue=4999.0,
+     )
+ 
+     assert decision.status is ProductStatus.KEEP
+@@ -65,7 +65,7 @@ def test_analyze_keeps_product_with_enough_conversions() -> None:
+         clicks=25,
+         cost=300.0,
+         conversions=2.0,
+-        conversion_value=700.0,
++        effective_revenue=700.0,
+     )
+ 
+     assert decision.status is ProductStatus.KEEP
+@@ -78,7 +78,7 @@ def test_analyze_watches_converting_product_below_keep_threshold() -> None:
+         clicks=16,
+         cost=400.0,
+         conversions=1.0,
+-        conversion_value=400.0,
++        effective_revenue=400.0,
+     )
+ 
+     assert decision.status is ProductStatus.WATCH
+@@ -101,7 +101,7 @@ def test_analyze_uses_injected_custom_thresholds() -> None:
+         clicks=5,
+         cost=60.0,
+         conversions=1.0,
+-        conversion_value=120.0,
++        effective_revenue=120.0,
+     )
+ 
+     assert decision.status is ProductStatus.SCALE
+@@ -114,7 +114,7 @@ def test_scale_decision_stores_performance_explanation() -> None:
+         clicks=30,
+         cost=350.0,
+         conversions=1.0,
+-        conversion_value=49095.0,
++        effective_revenue=49095.0,
+     )
+ 
+     assert decision.status is ProductStatus.SCALE
+@@ -128,7 +128,7 @@ def test_pause_decision_stores_spend_explanation() -> None:
+         clicks=104,
+         cost=450.0,
+         conversions=0.0,
+-        conversion_value=0.0,
++        effective_revenue=0.0,
+     )
+ 
+     assert decision.status is ProductStatus.PAUSE
+@@ -142,7 +142,7 @@ def test_low_cost_watch_decision_stores_insufficient_data_explanation() -> None:
+         clicks=3,
+         cost=45.0,
+         conversions=0.0,
+-        conversion_value=0.0,
++        effective_revenue=0.0,
+     )
+ 
+     assert decision.status is ProductStatus.WATCH
+@@ -156,14 +156,14 @@ def test_keep_and_low_performance_watch_decisions_store_performance_explanations
+         clicks=10,
+         cost=300.0,
+         conversions=2.0,
+-        conversion_value=700.0,
++        effective_revenue=700.0,
+     )
+     watch_decision = ProductAnalyzer().analyze(
+         sku="SKU-EXPLAIN-LOW",
+         clicks=10,
+         cost=400.0,
+         conversions=1.0,
+-        conversion_value=400.0,
++        effective_revenue=400.0,
+     )
+ 
+     assert keep_decision.status is ProductStatus.KEEP
+diff --git a/tests/test_recommendation_engine.py b/tests/test_recommendation_engine.py
+index f5b239b..7a0265c 100644
+--- a/tests/test_recommendation_engine.py
++++ b/tests/test_recommendation_engine.py
+@@ -9,7 +9,7 @@ def _decision(
+     sku: str,
+     status: ProductStatus,
+     cost: float,
+-    conversion_value: float,
++    effective_revenue: float,
+     roas: float,
+ ) -> ProductDecision:
+     """Build a product decision for recommendation engine tests."""
+@@ -18,7 +18,7 @@ def _decision(
+         clicks=10,
+         cost=cost,
+         conversions=0.0 if status is ProductStatus.PAUSE else 1.0,
+-        conversion_value=conversion_value,
++        effective_revenue=effective_revenue,
+         roas=roas,
+         status=status,
+         reason="Test decision.",
+@@ -32,42 +32,42 @@ def test_summarize_calculates_campaign_statistics_and_priorities() -> None:
+             sku="KEEP-1",
+             status=ProductStatus.KEEP,
+             cost=100.0,
+-            conversion_value=800.0,
++            effective_revenue=800.0,
+             roas=800.0,
+         ),
+         _decision(
+             sku="WATCH-1",
+             status=ProductStatus.WATCH,
+             cost=80.0,
+-            conversion_value=240.0,
++            effective_revenue=240.0,
+             roas=300.0,
+         ),
+         _decision(
+             sku="PAUSE-LOW",
+             status=ProductStatus.PAUSE,
+             cost=200.0,
+-            conversion_value=50.0,
++            effective_revenue=50.0,
+             roas=0.0,
+         ),
+         _decision(
+             sku="PAUSE-HIGH",
+             status=ProductStatus.PAUSE,
+             cost=300.0,
+-            conversion_value=75.0,
++            effective_revenue=75.0,
+             roas=0.0,
+         ),
+         _decision(
+             sku="SCALE-LOW",
+             status=ProductStatus.SCALE,
+             cost=100.0,
+-            conversion_value=1300.0,
++            effective_revenue=1300.0,
+             roas=1300.0,
+         ),
+         _decision(
+             sku="SCALE-HIGH",
+             status=ProductStatus.SCALE,
+             cost=100.0,
+-            conversion_value=1500.0,
++            effective_revenue=1500.0,
+             roas=1500.0,
+         ),
+     ]

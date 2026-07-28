@@ -149,7 +149,7 @@ def _build_overall_summary(decisions: Sequence[ProductDecision]) -> OverallSumma
 
     return OverallSummary(
         total_cost=sum(decision.cost for decision in decisions),
-        total_revenue=sum(decision.conversion_value for decision in decisions),
+        total_revenue=sum(decision.effective_revenue for decision in decisions),
         total_conversions=sum(decision.conversions for decision in decisions),
         total_products=len(decisions),
         keep=status_counts[ProductStatus.KEEP],

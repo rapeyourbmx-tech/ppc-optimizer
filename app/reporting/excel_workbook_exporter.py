@@ -716,7 +716,7 @@ class ExcelWorkbookExporter:
         if winners:
             sheet.sheet_properties.tabColor = "006100"
             selected = sorted(
-                (pair for pair in paired if pair[0].conversion_value > 0),
+                (pair for pair in paired if pair[0].effective_revenue > 0),
                 key=lambda pair: pair[0].roas,
                 reverse=True,
             )
@@ -776,7 +776,7 @@ class ExcelWorkbookExporter:
                 decision.clicks,
                 decision.cost,
                 decision.conversions,
-                decision.conversion_value,
+                decision.effective_revenue,
                 f"=IFERROR(G{row_number}/E{row_number},0)",
                 decision.reason,
             )
