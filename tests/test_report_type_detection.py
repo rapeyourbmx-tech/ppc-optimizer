@@ -146,3 +146,26 @@ def test_validate_accepts_statistics_exports(
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "Validation passed" in captured.out
+
+
+def test_statistics_file_generates_a_workbook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A statistics export produces a workbook with effective revenue."""
+    monkeypatch.chdir(tmp_path)
+    source_path = tmp_path / "statistics.csv"
+    _statistics_frame().to_csv(source_path, index=False)
+    output_path = tmp_path / "report.xlsx"
+
+    exit_code = run(source_path, output_path=output_path)
+
+    assert exit_code == 0
+    assert output_path.is_file()
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(output_path)
+    header_values = [cell.value for cell in workbook["Products"][1]]
+    assert "Effective Revenue" in header_values
+    watch_values = [cell.value for cell in workbook["WATCH"][2]]
+    assert 1000.0 in watch_values

@@ -55,6 +55,9 @@ _PRETTY_COLUMN_NAMES: dict[str, str] = {
     "cost": "Cost",
     "conversions": "Conversions",
     "conversion_value": "Conversion Value",
+    "direct_revenue": "Direct Revenue",
+    "assist_revenue": "Assist Revenue",
+    "effective_revenue": "Effective Revenue",
     "cost_per_conversion": "Cost / Conv.",
     "all_conversions": "All Conversions",
     "all_conversion_value": "All Conv. Value",
@@ -67,6 +70,9 @@ _COLUMN_FORMATS: dict[str, str] = {
     "cost": _FORMAT_MONEY,
     "conversions": _FORMAT_CONVERSIONS,
     "conversion_value": _FORMAT_MONEY,
+    "direct_revenue": _FORMAT_MONEY,
+    "assist_revenue": _FORMAT_MONEY,
+    "effective_revenue": _FORMAT_MONEY,
     "cost_per_conversion": _FORMAT_MONEY,
     "all_conversions": _FORMAT_CONVERSIONS,
     "all_conversion_value": _FORMAT_MONEY,
@@ -167,7 +173,10 @@ class ExcelWorkbookExporter:
         self._write_header_row(sheet, headers)
 
         cost_index = source_columns.index("cost") + 1
-        revenue_index = source_columns.index("conversion_value") + 1
+        revenue_source = (
+            "effective_revenue" if "effective_revenue" in source_columns else "conversion_value"
+        )
+        revenue_index = source_columns.index(revenue_source) + 1
         conversions_index = source_columns.index("conversions") + 1
         status_index = len(source_columns) + 1
         roas_index = status_index + 1

@@ -100,9 +100,7 @@ class AutoDetectingReportMapper:
             normalized_columns,
         )
         closest_missing = (
-            statistics_missing
-            if len(statistics_missing) < len(base_missing)
-            else base_missing
+            statistics_missing if len(statistics_missing) < len(base_missing) else base_missing
         )
         message = (
             "The file matches neither a base Google Ads product report nor a "
