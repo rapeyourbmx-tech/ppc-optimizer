@@ -196,7 +196,7 @@ index 5737ebf..0a66c85 100644
      "all_conversions",
      "all_conversion_value",
 diff --git a/app/loaders/product_report_loader.py b/app/loaders/product_report_loader.py
-index a669aa7..5d50da0 100644
+index a669aa7..65d3a61 100644
 --- a/app/loaders/product_report_loader.py
 +++ b/app/loaders/product_report_loader.py
 @@ -9,6 +9,11 @@ import pandas as pd
@@ -211,7 +211,19 @@ index a669aa7..5d50da0 100644
  
  
  class UnsupportedReportFormatError(ValueError):
-@@ -28,9 +33,17 @@ class GoogleAdsProductReportLoader:
+@@ -21,6 +26,11 @@ class GoogleAdsProductReportLoader:
+     _CSV_SUFFIX = ".csv"
+     _XLSX_SUFFIX = ".xlsx"
+     _CSV_ENCODING = "utf-8-sig"
++    _BOM_ENCODINGS: tuple[tuple[bytes, str], ...] = (
++        (b"\xff\xfe", "utf-16"),
++        (b"\xfe\xff", "utf-16"),
++        (b"\xef\xbb\xbf", "utf-8-sig"),
++    )
+     _CSV_ENGINE = "python"
+     _HEADER_MARKERS: frozenset[str] = frozenset({"зображення", "image"})
+     _CANDIDATE_DELIMITERS = ",;\t|"
+@@ -28,9 +38,17 @@ class GoogleAdsProductReportLoader:
      _SNIFF_SAMPLE_LINES = 10
      _FIRST_CELL_PATTERN = re.compile(r'^\s*"?([^",;\t|]*)')
  
@@ -232,7 +244,7 @@ index a669aa7..5d50da0 100644
  
      def load(self, source_path: Path) -> pd.DataFrame:
          """Load a CSV or XLSX report and normalize its column names.
-@@ -54,7 +67,8 @@ class GoogleAdsProductReportLoader:
+@@ -54,7 +72,8 @@ class GoogleAdsProductReportLoader:
              message = "Only CSV and XLSX Google Ads product reports are supported."
              raise UnsupportedReportFormatError(message)
  
@@ -242,10 +254,37 @@ index a669aa7..5d50da0 100644
  
      def _load_csv(self, source_path: Path) -> pd.DataFrame:
          """Read a Google Ads CSV export with header detection and delimiter sniffing.
-@@ -139,3 +153,22 @@ class GoogleAdsProductReportLoader:
+@@ -67,7 +86,8 @@ class GoogleAdsProductReportLoader:
+         commas stay intact. Exports whose data rows are wrapped in one extra
+         layer of quoting are unwrapped before parsing.
+         """
+-        lines = source_path.read_text(encoding=self._CSV_ENCODING).splitlines()
++        encoding = self._detect_encoding(source_path)
++        lines = source_path.read_text(encoding=encoding).splitlines()
+         header_index = self._find_header_index(lines)
+         tabular_lines = lines[header_index:]
+         delimiter = self._detect_delimiter(tabular_lines)
+@@ -139,3 +159,39 @@ class GoogleAdsProductReportLoader:
              return self._DEFAULT_DELIMITER
  
          return dialect.delimiter
++
++    @classmethod
++    def _detect_encoding(cls, source_path: Path) -> str:
++        """Detect the CSV encoding from its byte-order mark.
++
++        Google Ads offers two CSV download flavors: plain CSV (UTF-8 with
++        BOM) and CSV for Excel (UTF-16 with BOM). The BOM identifies the
++        encoding; files without one are read as UTF-8.
++        """
++        with source_path.open("rb") as source_file:
++            leading_bytes = source_file.read(3)
++
++        for bom, encoding in cls._BOM_ENCODINGS:
++            if leading_bytes.startswith(bom):
++                return encoding
++
++        return cls._CSV_ENCODING
 +
 +    @staticmethod
 +    def _materialize_effective_revenue(report: pd.DataFrame) -> pd.DataFrame:
@@ -473,7 +512,7 @@ index 579c45f..b094b44 100644
 -    assert "Missing required columns" in log_text
 +    assert "matches neither" in log_text
 diff --git a/tests/test_product_report_loader.py b/tests/test_product_report_loader.py
-index 7732407..ec9f237 100644
+index 7732407..2bc3373 100644
 --- a/tests/test_product_report_loader.py
 +++ b/tests/test_product_report_loader.py
 @@ -192,7 +192,8 @@ def test_load_reports_missing_required_google_ads_columns(tmp_path: Path) -> Non
@@ -486,6 +525,43 @@ index 7732407..ec9f237 100644
  
  
  def test_load_rejects_unsupported_file_types(tmp_path: Path) -> None:
+@@ -202,3 +203,36 @@ def test_load_rejects_unsupported_file_types(tmp_path: Path) -> None:
+ 
+     with pytest.raises(UnsupportedReportFormatError, match="Only CSV and XLSX"):
+         GoogleAdsProductReportLoader().load(source_path)
++
++
++def test_load_reads_utf16_csv_for_excel_export(tmp_path: Path) -> None:
++    """The UTF-16 'CSV for Excel' Google Ads flavor loads transparently."""
++    content = (
++        "Звіт про товари\n"
++        "Усі кампанії\n"
++        "Зображення\tІдентифікатор товару\tПокази\tКліки\tВартість\t"
++        "Конверсії\tЦінність конв.\n"
++        "\tSKU-UTF16\t1000\t10\tгрн350,00\t2\tгрн700,00\n"
++    )
++    source_path = tmp_path / "utf16_report.csv"
++    source_path.write_bytes(content.encode("utf-16"))
++
++    report = GoogleAdsProductReportLoader().load(source_path)
++
++    assert report.loc[0, "product_id"] == "SKU-UTF16"
++    assert report.loc[0, "cost"] == 350.0
++    assert report.loc[0, "conversion_value"] == 700.0
++
++
++def test_load_still_reads_utf8_with_bom(tmp_path: Path) -> None:
++    """UTF-8 exports with a BOM keep loading after encoding detection."""
++    content = (
++        "Item ID,Impressions,Clicks,Cost,Conversions,Conversion Value\n"
++        "SKU-UTF8,1000,10,350.0,2,700.0\n"
++    )
++    source_path = tmp_path / "utf8_report.csv"
++    source_path.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
++
++    report = GoogleAdsProductReportLoader().load(source_path)
++
++    assert report.loc[0, "product_id"] == "SKU-UTF8"
 diff --git a/tests/test_report_type_detection.py b/tests/test_report_type_detection.py
 new file mode 100644
 index 0000000..324b3d7

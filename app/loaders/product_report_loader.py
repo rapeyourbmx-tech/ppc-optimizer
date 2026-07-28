@@ -26,6 +26,11 @@ class GoogleAdsProductReportLoader:
     _CSV_SUFFIX = ".csv"
     _XLSX_SUFFIX = ".xlsx"
     _CSV_ENCODING = "utf-8-sig"
+    _BOM_ENCODINGS: tuple[tuple[bytes, str], ...] = (
+        (b"\xff\xfe", "utf-16"),
+        (b"\xfe\xff", "utf-16"),
+        (b"\xef\xbb\xbf", "utf-8-sig"),
+    )
     _CSV_ENGINE = "python"
     _HEADER_MARKERS: frozenset[str] = frozenset({"зображення", "image"})
     _CANDIDATE_DELIMITERS = ",;\t|"
@@ -81,7 +86,8 @@ class GoogleAdsProductReportLoader:
         commas stay intact. Exports whose data rows are wrapped in one extra
         layer of quoting are unwrapped before parsing.
         """
-        lines = source_path.read_text(encoding=self._CSV_ENCODING).splitlines()
+        encoding = self._detect_encoding(source_path)
+        lines = source_path.read_text(encoding=encoding).splitlines()
         header_index = self._find_header_index(lines)
         tabular_lines = lines[header_index:]
         delimiter = self._detect_delimiter(tabular_lines)
@@ -153,6 +159,23 @@ class GoogleAdsProductReportLoader:
             return self._DEFAULT_DELIMITER
 
         return dialect.delimiter
+
+    @classmethod
+    def _detect_encoding(cls, source_path: Path) -> str:
+        """Detect the CSV encoding from its byte-order mark.
+
+        Google Ads offers two CSV download flavors: plain CSV (UTF-8 with
+        BOM) and CSV for Excel (UTF-16 with BOM). The BOM identifies the
+        encoding; files without one are read as UTF-8.
+        """
+        with source_path.open("rb") as source_file:
+            leading_bytes = source_file.read(3)
+
+        for bom, encoding in cls._BOM_ENCODINGS:
+            if leading_bytes.startswith(bom):
+                return encoding
+
+        return cls._CSV_ENCODING
 
     @staticmethod
     def _materialize_effective_revenue(report: pd.DataFrame) -> pd.DataFrame:

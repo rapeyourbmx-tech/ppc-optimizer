@@ -203,3 +203,36 @@ def test_load_rejects_unsupported_file_types(tmp_path: Path) -> None:
 
     with pytest.raises(UnsupportedReportFormatError, match="Only CSV and XLSX"):
         GoogleAdsProductReportLoader().load(source_path)
+
+
+def test_load_reads_utf16_csv_for_excel_export(tmp_path: Path) -> None:
+    """The UTF-16 'CSV for Excel' Google Ads flavor loads transparently."""
+    content = (
+        "Звіт про товари\n"
+        "Усі кампанії\n"
+        "Зображення\tІдентифікатор товару\tПокази\tКліки\tВартість\t"
+        "Конверсії\tЦінність конв.\n"
+        "\tSKU-UTF16\t1000\t10\tгрн350,00\t2\tгрн700,00\n"
+    )
+    source_path = tmp_path / "utf16_report.csv"
+    source_path.write_bytes(content.encode("utf-16"))
+
+    report = GoogleAdsProductReportLoader().load(source_path)
+
+    assert report.loc[0, "product_id"] == "SKU-UTF16"
+    assert report.loc[0, "cost"] == 350.0
+    assert report.loc[0, "conversion_value"] == 700.0
+
+
+def test_load_still_reads_utf8_with_bom(tmp_path: Path) -> None:
+    """UTF-8 exports with a BOM keep loading after encoding detection."""
+    content = (
+        "Item ID,Impressions,Clicks,Cost,Conversions,Conversion Value\n"
+        "SKU-UTF8,1000,10,350.0,2,700.0\n"
+    )
+    source_path = tmp_path / "utf8_report.csv"
+    source_path.write_bytes(b"\xef\xbb\xbf" + content.encode("utf-8"))
+
+    report = GoogleAdsProductReportLoader().load(source_path)
+
+    assert report.loc[0, "product_id"] == "SKU-UTF8"
