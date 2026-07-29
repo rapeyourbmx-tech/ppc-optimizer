@@ -8,6 +8,7 @@ import pandas as pd
 from app.analyzers.audit_engine import AuditEngine
 from app.analyzers.product_analyzer import ProductAnalyzer
 from app.config import ThresholdConfiguration
+from app.loaders.product_report_loader import GoogleAdsProductReportLoader
 from app.models.campaign import (
     CampaignMetadata,
     CampaignReport,
@@ -16,17 +17,30 @@ from app.models.campaign import (
 )
 from app.models.product_decision import ProductDecision, ProductStatus
 from app.models.report import ProductReport
-from app.services.application_pipeline import ApplicationPipeline
+from app.services.application_pipeline import ApplicationPipeline, PipelineResult
 
 _HEALTHY = "Healthy"
 _NEEDS_ATTENTION = "Needs attention"
 _CAMPAIGN_TYPE_KEYWORDS: tuple[tuple[str, str], ...] = (
     ("high", "High priority"),
+    ("хай", "High priority"),
+    ("висок", "High priority"),
     ("average", "Medium priority"),
+    ("аверейдж", "Medium priority"),
+    ("середн", "Medium priority"),
     ("medium", "Medium priority"),
     ("low", "Low priority"),
+    ("лоу", "Low priority"),
+    ("лов", "Low priority"),
+    ("низьк", "Low priority"),
 )
 _DEFAULT_CAMPAIGN_TYPE = "Standard"
+_CAMPAIGN_NAME_COLUMNS: tuple[str, ...] = (
+    "кампанія",
+    "campaign",
+    "назва_кампанії",
+    "campaign_name",
+)
 _METADATA_COLUMNS: tuple[str, ...] = ("campaign_name", "campaign_type", "source_file")
 
 
@@ -48,6 +62,7 @@ class MultiCampaignAnalyzer:
         """
         self._configuration = configuration or ThresholdConfiguration()
         self._shared_pipeline = pipeline
+        self._loader = GoogleAdsProductReportLoader()
 
     def analyze(self, source_paths: Sequence[Path]) -> MultiCampaignReport:
         """Run the pipeline for every source file and combine the results.
@@ -70,21 +85,20 @@ class MultiCampaignAnalyzer:
         combined_decisions: list[ProductDecision] = []
 
         for source_path in source_paths:
-            metadata = _derive_campaign_metadata(source_path)
-            result = self._pipeline_for(metadata.name).run(source_path)
-            campaigns.append(
-                CampaignReport(
-                    metadata=metadata,
-                    report=ProductReport(
-                        products=result.products,
-                        decisions=result.decisions,
-                        campaign_summary=result.campaign_summary,
-                        audit_report=result.audit_report,
-                    ),
+            for metadata, result in self._campaign_segments(source_path):
+                campaigns.append(
+                    CampaignReport(
+                        metadata=metadata,
+                        report=ProductReport(
+                            products=result.products,
+                            decisions=result.decisions,
+                            campaign_summary=result.campaign_summary,
+                            audit_report=result.audit_report,
+                        ),
+                    )
                 )
-            )
-            campaign_frames.append(_with_campaign_columns(result.products, metadata))
-            combined_decisions.extend(result.decisions)
+                campaign_frames.append(_with_campaign_columns(result.products, metadata))
+                combined_decisions.extend(result.decisions)
 
         return MultiCampaignReport(
             campaigns=campaigns,
@@ -93,6 +107,53 @@ class MultiCampaignAnalyzer:
             products=pd.concat(campaign_frames, ignore_index=True, sort=False),
             decisions=combined_decisions,
         )
+
+    def _campaign_segments(
+        self,
+        source_path: Path,
+    ) -> list[tuple[CampaignMetadata, PipelineResult]]:
+        """Split one report file into campaigns and analyze each of them.
+
+        When the export carries a campaign column, every distinct value
+        becomes its own campaign with the matching thresholds; otherwise
+        the whole file is one campaign identified by its file name.
+        """
+        if self._shared_pipeline is not None:
+            metadata = _derive_campaign_metadata(source_path)
+            return [(metadata, self._shared_pipeline.run(source_path))]
+
+        products = self._loader.load(source_path)
+        campaign_column = next(
+            (
+                column_name
+                for column_name in _CAMPAIGN_NAME_COLUMNS
+                if column_name in products.columns
+            ),
+            None,
+        )
+        if campaign_column is None:
+            metadata = _derive_campaign_metadata(source_path)
+            pipeline = self._pipeline_for(metadata.name)
+            return [(metadata, pipeline.run_products(products))]
+
+        segments: list[tuple[CampaignMetadata, PipelineResult]] = []
+        for campaign_value, campaign_products in products.groupby(
+            campaign_column, sort=False, dropna=False
+        ):
+            campaign_name = (
+                str(campaign_value) if not pd.isna(campaign_value) else source_path.stem
+            )
+            metadata = CampaignMetadata(
+                name=campaign_name,
+                campaign_type=_campaign_type_for(campaign_name),
+                source_file=source_path.name,
+            )
+            pipeline = self._pipeline_for(campaign_name)
+            segments.append(
+                (metadata, pipeline.run_products(campaign_products.reset_index(drop=True)))
+            )
+
+        return segments
 
     def _pipeline_for(self, campaign_name: str) -> ApplicationPipeline:
         """Return the pipeline for one campaign with its effective thresholds."""
@@ -109,20 +170,24 @@ class MultiCampaignAnalyzer:
 def _derive_campaign_metadata(source_path: Path) -> CampaignMetadata:
     """Derive a campaign identity from one report file path."""
     stem = source_path.stem
-    lowered_stem = stem.casefold()
-    campaign_type = next(
-        (
-            derived_type
-            for keyword, derived_type in _CAMPAIGN_TYPE_KEYWORDS
-            if keyword in lowered_stem
-        ),
-        _DEFAULT_CAMPAIGN_TYPE,
-    )
 
     return CampaignMetadata(
         name=stem,
-        campaign_type=campaign_type,
+        campaign_type=_campaign_type_for(stem),
         source_file=source_path.name,
+    )
+
+
+def _campaign_type_for(campaign_name: str) -> str:
+    """Derive the campaign type from a campaign or file name."""
+    lowered_name = campaign_name.casefold()
+    return next(
+        (
+            derived_type
+            for keyword, derived_type in _CAMPAIGN_TYPE_KEYWORDS
+            if keyword in lowered_name
+        ),
+        _DEFAULT_CAMPAIGN_TYPE,
     )
 
 

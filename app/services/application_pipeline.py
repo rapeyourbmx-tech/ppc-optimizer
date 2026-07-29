@@ -52,7 +52,10 @@ class ApplicationPipeline:
 
     def run(self, source_path: Path) -> PipelineResult:
         """Process a CSV or XLSX product report from the supplied path."""
-        products = self._loader.load(source_path)
+        return self.run_products(self._loader.load(source_path))
+
+    def run_products(self, products: pd.DataFrame) -> PipelineResult:
+        """Process an already loaded product report frame."""
         decisions = self._analyze_products(products)
         campaign_summary = self._recommendation_engine.summarize(decisions)
         audit_report = self._audit_engine.audit(products, campaign_summary)

@@ -160,3 +160,36 @@ def test_exporter_applies_excel_and_dashboard_settings(tmp_path: Path) -> None:
     assert dashboard.cell(row=1, column=2).font.name == "Calibri"
     assert winners.cell(row=2, column=1).value is not None
     assert winners.cell(row=3, column=1).value is None
+
+
+def test_products_sheet_drops_display_only_source_columns(tmp_path: Path) -> None:
+    """Image, item status, and issues columns stay out of the workbook."""
+    source_path = tmp_path / "product_report.csv"
+    pd.DataFrame(
+        [
+            {
+                "Image": "http://example.com/x.png",
+                "Item ID": "DROP-1",
+                "Status": "Approved",
+                "Issues": "",
+                "Ціна": "грн736,00",
+                "Impressions": 1000,
+                "Clicks": 10,
+                "Cost": 350.0,
+                "Conversions": 2.0,
+                "Conversion Value": 900.0,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+    report = MultiCampaignAnalyzer().analyze([source_path])
+    output_path = tmp_path / "report.xlsx"
+
+    ExcelWorkbookExporter().export(report, output_path)
+
+    products_sheet = load_workbook(output_path)[str(WorkbookSheet.PRODUCTS)]
+    header_values = [cell.value for cell in products_sheet[1] if cell.value]
+    assert "Image" not in header_values
+    assert "Issues" not in header_values
+    assert header_values.count("Status") == 1  # only the decision column
+    price_index = header_values.index("Ціна") + 1
+    assert products_sheet.cell(row=2, column=price_index).value == 736.0

@@ -31,6 +31,9 @@ _BUDGET_ACTION_COLORS: dict[str, str] = {
     BudgetAction.KEEP: "808080",
     BudgetAction.DECREASE: "9C0006",
 }
+_EXCLUDED_SOURCE_COLUMNS: frozenset[str] = frozenset(
+    {"зображення", "image", "статус", "status", "проблеми", "issues"}
+)
 _STATUS_STYLES: dict[str, tuple[str, str]] = {
     ProductStatus.KEEP: ("C6EFCE", "006100"),
     ProductStatus.WATCH: ("FFEB9C", "9C6500"),
@@ -58,6 +61,9 @@ _PRETTY_COLUMN_NAMES: dict[str, str] = {
     "conversion_value": "Conversion Value",
     "direct_revenue": "Direct Revenue",
     "assist_revenue": "Assist Revenue",
+    "ціна": "Ціна",
+    "price": "Price",
+    "кампанія": "Кампанія",
     "cost_per_conversion": "Cost / Conv.",
     "all_conversions": "All Conversions",
     "all_conversion_value": "All Conv. Value",
@@ -72,6 +78,8 @@ _COLUMN_FORMATS: dict[str, str] = {
     "conversion_value": _FORMAT_MONEY,
     "direct_revenue": _FORMAT_MONEY,
     "assist_revenue": _FORMAT_MONEY,
+    "ціна": _FORMAT_MONEY,
+    "price": _FORMAT_MONEY,
     "cost_per_conversion": _FORMAT_MONEY,
     "all_conversions": _FORMAT_CONVERSIONS,
     "all_conversion_value": _FORMAT_MONEY,
@@ -164,7 +172,12 @@ class ExcelWorkbookExporter:
         """Write every original column plus decision columns, return the layout."""
         sheet.sheet_properties.tabColor = self._accent_color
         products = report.products
-        source_columns = list(products.columns)
+        source_columns = [
+            column
+            for column in products.columns
+            if column not in _EXCLUDED_SOURCE_COLUMNS
+        ]
+        products = products[source_columns]
         headers = [
             *(self._pretty_column_name(column) for column in source_columns),
             "Status",
