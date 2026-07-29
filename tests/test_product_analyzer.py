@@ -12,7 +12,7 @@ def test_analyze_marks_low_cost_product_for_watch() -> None:
         clicks=10,
         cost=99.0,
         conversions=2.0,
-        effective_revenue=1500.0,
+        conversion_value=1500.0,
     )
 
     assert decision.status is ProductStatus.WATCH
@@ -26,7 +26,7 @@ def test_analyze_pauses_product_with_cost_and_no_conversions() -> None:
         clicks=20,
         cost=350.0,
         conversions=0.0,
-        effective_revenue=0.0,
+        conversion_value=0.0,
     )
 
     assert decision.status is ProductStatus.PAUSE
@@ -39,7 +39,7 @@ def test_analyze_scales_product_meeting_roas_and_revenue_thresholds() -> None:
         clicks=30,
         cost=350.0,
         conversions=1.0,
-        effective_revenue=49095.0,
+        conversion_value=49095.0,
     )
 
     assert decision.status is ProductStatus.SCALE
@@ -52,7 +52,7 @@ def test_analyze_does_not_scale_without_enough_revenue() -> None:
         clicks=30,
         cost=350.0,
         conversions=3.0,
-        effective_revenue=4999.0,
+        conversion_value=4999.0,
     )
 
     assert decision.status is ProductStatus.KEEP
@@ -65,7 +65,7 @@ def test_analyze_keeps_product_with_enough_conversions() -> None:
         clicks=25,
         cost=300.0,
         conversions=2.0,
-        effective_revenue=700.0,
+        conversion_value=700.0,
     )
 
     assert decision.status is ProductStatus.KEEP
@@ -78,7 +78,7 @@ def test_analyze_watches_converting_product_below_keep_threshold() -> None:
         clicks=16,
         cost=400.0,
         conversions=1.0,
-        effective_revenue=400.0,
+        conversion_value=400.0,
     )
 
     assert decision.status is ProductStatus.WATCH
@@ -101,7 +101,7 @@ def test_analyze_uses_injected_custom_thresholds() -> None:
         clicks=5,
         cost=60.0,
         conversions=1.0,
-        effective_revenue=120.0,
+        conversion_value=120.0,
     )
 
     assert decision.status is ProductStatus.SCALE
@@ -114,7 +114,7 @@ def test_scale_decision_stores_performance_explanation() -> None:
         clicks=30,
         cost=350.0,
         conversions=1.0,
-        effective_revenue=49095.0,
+        conversion_value=49095.0,
     )
 
     assert decision.status is ProductStatus.SCALE
@@ -128,7 +128,7 @@ def test_pause_decision_stores_spend_explanation() -> None:
         clicks=104,
         cost=450.0,
         conversions=0.0,
-        effective_revenue=0.0,
+        conversion_value=0.0,
     )
 
     assert decision.status is ProductStatus.PAUSE
@@ -142,7 +142,7 @@ def test_low_cost_watch_decision_stores_insufficient_data_explanation() -> None:
         clicks=3,
         cost=45.0,
         conversions=0.0,
-        effective_revenue=0.0,
+        conversion_value=0.0,
     )
 
     assert decision.status is ProductStatus.WATCH
@@ -156,14 +156,14 @@ def test_keep_and_low_performance_watch_decisions_store_performance_explanations
         clicks=10,
         cost=300.0,
         conversions=2.0,
-        effective_revenue=700.0,
+        conversion_value=700.0,
     )
     watch_decision = ProductAnalyzer().analyze(
         sku="SKU-EXPLAIN-LOW",
         clicks=10,
         cost=400.0,
         conversions=1.0,
-        effective_revenue=400.0,
+        conversion_value=400.0,
     )
 
     assert keep_decision.status is ProductStatus.KEEP

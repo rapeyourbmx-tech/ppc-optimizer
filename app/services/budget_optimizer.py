@@ -49,7 +49,7 @@ class BudgetOptimizer:
         campaign_name = campaign.metadata.name
         decisions = campaign.report.decisions
         spend = sum(decision.cost for decision in decisions)
-        revenue = sum(decision.effective_revenue for decision in decisions)
+        revenue = sum(decision.conversion_value for decision in decisions)
         conversions = sum(decision.conversions for decision in decisions)
         roas = revenue / spend if spend else 0.0
 

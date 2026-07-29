@@ -1,0 +1,288 @@
+diff --git a/app/analyzers/decision_explainer.py b/app/analyzers/decision_explainer.py
+index f21c3ac..79f062e 100644
+--- a/app/analyzers/decision_explainer.py
++++ b/app/analyzers/decision_explainer.py
+@@ -1,5 +1,10 @@
+ """Human-readable explanations for product decisions."""
+ 
++CROSS_SELL_PROTECTION_REASON = (
++    "Product generates sufficient cross-sell revenue to justify keeping "
++    "it active despite not meeting direct performance requirements."
++)
++
+ 
+ class DecisionExplainer:
+     """Format metric-based explanations for product decisions."""
+@@ -43,20 +48,17 @@ class DecisionExplainer:
+     def cross_sell_protection(
+         self,
+         *,
+-        cost: float,
+-        conversions: float,
+         assist_revenue: float,
++        cross_sell_roas: float,
++        min_cross_sell_roas: float,
+     ) -> str:
+         """Explain a WATCH decision protected by cross-sell revenue."""
+         return "\n".join(
+             (
+-                f"Cost = {_format_metric(cost)}",
+-                f"Conversions = {_format_metric(conversions)}",
+                 f"Cross-sell revenue = {_format_metric(assist_revenue)}",
+-                (
+-                    "Pause conditions met, however the product generated "
+-                    f"{_format_metric(assist_revenue)} of cross-sell revenue."
+-                ),
++                f"Cross-sell ROAS = {cross_sell_roas:.2f}",
++                f"Threshold = {min_cross_sell_roas:.2f}",
++                CROSS_SELL_PROTECTION_REASON,
+             )
+         )
+ 
+diff --git a/app/analyzers/product_analyzer.py b/app/analyzers/product_analyzer.py
+index 0821721..acbc9b4 100644
+--- a/app/analyzers/product_analyzer.py
++++ b/app/analyzers/product_analyzer.py
+@@ -1,11 +1,12 @@
+ """Product-level advertising performance analysis."""
+ 
+-from app.analyzers.decision_explainer import DecisionExplainer
++from app.analyzers.decision_explainer import (
++    CROSS_SELL_PROTECTION_REASON,
++    DecisionExplainer,
++)
+ from app.config import DecisionThresholds
+ from app.models.product_decision import ProductDecision, ProductStatus
+ 
+-CROSS_SELL_PROTECTION_REASON = "Product generates cross-sell revenue."
+-
+ 
+ class ProductAnalyzer:
+     """Classify a product according to configurable performance thresholds."""
+@@ -57,6 +58,37 @@ class ProductAnalyzer:
+             explanation=explanation,
+         )
+ 
++    def _cross_sell_protection(
++        self,
++        *,
++        cost: float,
++        assist_revenue: float,
++    ) -> tuple[ProductStatus, str, str] | None:
++        """Protect a PAUSE candidate when its cross-sell ROAS clears the bar.
++
++        The cross-sell ROAS (assist_revenue / cost) is used only here and
++        never touches the main ROAS. Returns None when the protection is
++        disabled, there is no assist revenue, or the ratio is below the
++        configured minimum — the PAUSE recommendation then stands.
++        """
++        cross_sell = self._thresholds.cross_sell
++        if not cross_sell.enabled or assist_revenue <= 0 or cost <= 0:
++            return None
++
++        cross_sell_roas = assist_revenue / cost
++        if cross_sell_roas < cross_sell.min_cross_sell_roas:
++            return None
++
++        return (
++            ProductStatus.WATCH,
++            CROSS_SELL_PROTECTION_REASON,
++            self._explainer.cross_sell_protection(
++                assist_revenue=assist_revenue,
++                cross_sell_roas=cross_sell_roas,
++                min_cross_sell_roas=cross_sell.min_cross_sell_roas,
++            ),
++        )
++
+     @staticmethod
+     def _calculate_roas(*, cost: float, conversion_value: float) -> float:
+         """Calculate ROAS as conversion_value / cost in percent."""
+@@ -89,16 +121,12 @@ class ProductAnalyzer:
+             )
+ 
+         if cost >= pause.min_cost and conversions <= pause.max_conversions:
+-            if assist_revenue > 0:
+-                return (
+-                    ProductStatus.WATCH,
+-                    CROSS_SELL_PROTECTION_REASON,
+-                    self._explainer.cross_sell_protection(
+-                        cost=cost,
+-                        conversions=conversions,
+-                        assist_revenue=assist_revenue,
+-                    ),
+-                )
++            protection = self._cross_sell_protection(
++                cost=cost,
++                assist_revenue=assist_revenue,
++            )
++            if protection is not None:
++                return protection
+             return (
+                 ProductStatus.PAUSE,
+                 (
+diff --git a/app/config.py b/app/config.py
+index 23814de..a93373a 100644
+--- a/app/config.py
++++ b/app/config.py
+@@ -47,6 +47,13 @@ class KeepThresholds(_StrictModel):
+     min_conversions: float = 2.0
+ 
+ 
++class CrossSellThresholds(_StrictModel):
++    """Settings of the cross-sell protection of PAUSE candidates."""
++
++    enabled: bool = True
++    min_cross_sell_roas: float = 2.0
++
++
+ class DecisionThresholds(_StrictModel):
+     """Every configurable threshold used by product decision rules."""
+ 
+@@ -54,6 +61,7 @@ class DecisionThresholds(_StrictModel):
+     scale: ScaleThresholds = ScaleThresholds()
+     watch: WatchThresholds = WatchThresholds()
+     keep: KeepThresholds = KeepThresholds()
++    cross_sell: CrossSellThresholds = CrossSellThresholds()
+ 
+ 
+ class AuditThresholds(_StrictModel):
+@@ -107,6 +115,7 @@ class ThresholdConfiguration(_StrictModel):
+     scale: ScaleThresholds = ScaleThresholds()
+     watch: WatchThresholds = WatchThresholds()
+     keep: KeepThresholds = KeepThresholds()
++    cross_sell: CrossSellThresholds = CrossSellThresholds()
+     budget: BudgetThresholds = BudgetThresholds()
+     audit: AuditThresholds = AuditThresholds()
+     excel: ExcelSettings = ExcelSettings()
+@@ -120,6 +129,7 @@ class ThresholdConfiguration(_StrictModel):
+             scale=self.scale,
+             watch=self.watch,
+             keep=self.keep,
++            cross_sell=self.cross_sell,
+         )
+ 
+     def thresholds_for_campaign(self, campaign_name: str) -> DecisionThresholds:
+@@ -157,6 +167,7 @@ class ThresholdConfiguration(_StrictModel):
+                 ),
+             ),
+             keep=self.keep,
++            cross_sell=self.cross_sell,
+         )
+ 
+     def _matching_override(self, campaign_name: str) -> CampaignThresholds | None:
+diff --git a/app/reporting/excel_workbook_exporter.py b/app/reporting/excel_workbook_exporter.py
+index d9b1eea..bfefa78 100644
+--- a/app/reporting/excel_workbook_exporter.py
++++ b/app/reporting/excel_workbook_exporter.py
+@@ -11,7 +11,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+ from openpyxl.utils import get_column_letter
+ from openpyxl.worksheet.worksheet import Worksheet
+ 
+-from app.analyzers.product_analyzer import CROSS_SELL_PROTECTION_REASON
++from app.analyzers.decision_explainer import CROSS_SELL_PROTECTION_REASON
+ from app.config import ThresholdConfiguration
+ from app.core.workbook import WorkbookSheet
+ from app.models.budget import BudgetAction, BudgetOptimizationReport
+diff --git a/config.yaml b/config.yaml
+index 97b02f9..b46c1ea 100644
+--- a/config.yaml
++++ b/config.yaml
+@@ -68,3 +68,10 @@ dashboard:
+   header_color: "1F3864"
+   card_fill_color: "F5F7FA"
+   roas_color_scale_max: 10   # ROAS (x) mapped to the greenest color
++
++# Cross-sell protection: a PAUSE candidate stays active as WATCH when its
++# cross-sell ROAS (assist_revenue / cost, a plain ratio) reaches the minimum.
++# This ratio is separate from the main ROAS (conversion_value / cost).
++cross_sell:
++  enabled: true
++  min_cross_sell_roas: 2.0
+diff --git a/tests/test_cross_sell_protection.py b/tests/test_cross_sell_protection.py
+index a38922a..67ce477 100644
+--- a/tests/test_cross_sell_protection.py
++++ b/tests/test_cross_sell_protection.py
+@@ -6,10 +6,9 @@ import pandas as pd
+ import pytest
+ from openpyxl import load_workbook
+ 
+-from app.analyzers.product_analyzer import (
+-    CROSS_SELL_PROTECTION_REASON,
+-    ProductAnalyzer,
+-)
++from app.analyzers.decision_explainer import CROSS_SELL_PROTECTION_REASON
++from app.analyzers.product_analyzer import ProductAnalyzer
++from app.config import CrossSellThresholds, DecisionThresholds
+ from app.models.product_decision import ProductStatus
+ from main import run
+ 
+@@ -28,15 +27,47 @@ def _analyze(**overrides):
+     return ProductAnalyzer().analyze(**metrics)
+ 
+ 
+-def test_pause_candidate_with_assist_revenue_becomes_watch() -> None:
+-    """Assist revenue protects a pause candidate and moves it to WATCH."""
+-    decision = _analyze(assist_revenue=2464.48)
++def test_pause_candidate_with_strong_cross_sell_roas_becomes_watch() -> None:
++    """A cross-sell ROAS above the threshold protects the pause candidate."""
++    decision = _analyze(assist_revenue=2464.48)  # 2464.48 / 500 = 4.93x
+ 
+     assert decision.status is ProductStatus.WATCH
+     assert decision.reason == CROSS_SELL_PROTECTION_REASON
+     assert decision.assist_revenue == 2464.48
+ 
+ 
++def test_cross_sell_roas_below_threshold_keeps_pause() -> None:
++    """Weak cross-sell revenue no longer blocks the PAUSE recommendation."""
++    decision = _analyze(assist_revenue=500.0)  # 500 / 500 = 1.0x < 2.0
++
++    assert decision.status is ProductStatus.PAUSE
++
++
++def test_cross_sell_roas_equal_to_threshold_becomes_watch() -> None:
++    """The protection is inclusive at exactly the configured ratio."""
++    decision = _analyze(assist_revenue=1000.0)  # 1000 / 500 = 2.0x
++
++    assert decision.status is ProductStatus.WATCH
++
++
++def test_disabled_protection_keeps_pause() -> None:
++    """cross_sell.enabled: false turns the protection off entirely."""
++    analyzer = ProductAnalyzer(
++        thresholds=DecisionThresholds(cross_sell=CrossSellThresholds(enabled=False))
++    )
++
++    decision = analyzer.analyze(
++        sku="OFF-1",
++        clicks=30,
++        cost=500.0,
++        conversions=0.0,
++        conversion_value=0.0,
++        assist_revenue=9999.0,
++    )
++
++    assert decision.status is ProductStatus.PAUSE
++
++
+ def test_pause_candidate_without_assist_revenue_still_pauses() -> None:
+     """The PAUSE rule itself is unchanged when there is no assist revenue."""
+     decision = _analyze()
+@@ -68,12 +99,14 @@ def test_roas_uses_conversion_value_only() -> None:
+     assert decision.roas == pytest.approx(200.0)
+ 
+ 
+-def test_protection_explanation_mentions_cross_sell_amount() -> None:
+-    """Explain mode names the cross-sell revenue that protected the product."""
++def test_protection_explanation_shows_ratio_threshold_and_reason() -> None:
++    """Explain mode shows the amount, the ratio, the threshold, and the reason."""
+     decision = _analyze(assist_revenue=2464.48)
+ 
+-    assert "2464.48 of cross-sell revenue" in decision.explanation
+-    assert "Pause conditions met" in decision.explanation
++    assert "Cross-sell revenue = 2464.48" in decision.explanation
++    assert "Cross-sell ROAS = 4.93" in decision.explanation
++    assert "Threshold = 2.00" in decision.explanation
++    assert CROSS_SELL_PROTECTION_REASON in decision.explanation
+ 
+ 
+ def test_workbook_reports_protection_and_top_assist_sheet(

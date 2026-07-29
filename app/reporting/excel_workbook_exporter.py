@@ -11,6 +11,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
+from app.analyzers.decision_explainer import CROSS_SELL_PROTECTION_REASON
 from app.config import ThresholdConfiguration
 from app.core.workbook import WorkbookSheet
 from app.models.budget import BudgetAction, BudgetOptimizationReport
@@ -57,7 +58,6 @@ _PRETTY_COLUMN_NAMES: dict[str, str] = {
     "conversion_value": "Conversion Value",
     "direct_revenue": "Direct Revenue",
     "assist_revenue": "Assist Revenue",
-    "effective_revenue": "Effective Revenue",
     "cost_per_conversion": "Cost / Conv.",
     "all_conversions": "All Conversions",
     "all_conversion_value": "All Conv. Value",
@@ -72,7 +72,6 @@ _COLUMN_FORMATS: dict[str, str] = {
     "conversion_value": _FORMAT_MONEY,
     "direct_revenue": _FORMAT_MONEY,
     "assist_revenue": _FORMAT_MONEY,
-    "effective_revenue": _FORMAT_MONEY,
     "cost_per_conversion": _FORMAT_MONEY,
     "all_conversions": _FORMAT_CONVERSIONS,
     "all_conversion_value": _FORMAT_MONEY,
@@ -149,6 +148,9 @@ class ExcelWorkbookExporter:
         losers_sheet = workbook.create_sheet(WorkbookSheet.TOP_LOSERS)
         self._write_top_products_sheet(losers_sheet, report, winners=False)
 
+        assist_sheet = workbook.create_sheet(WorkbookSheet.TOP_ASSIST)
+        self._write_top_assist_sheet(assist_sheet, report)
+
         workbook.save(output_path)
 
     # ------------------------------------------------------------------
@@ -174,7 +176,7 @@ class ExcelWorkbookExporter:
 
         cost_index = source_columns.index("cost") + 1
         revenue_source = (
-            "effective_revenue" if "effective_revenue" in source_columns else "conversion_value"
+            "conversion_value" if "conversion_value" in source_columns else "direct_revenue"
         )
         revenue_index = source_columns.index(revenue_source) + 1
         conversions_index = source_columns.index("conversions") + 1
@@ -613,7 +615,8 @@ class ExcelWorkbookExporter:
         for campaign in report.campaigns:
             current_row = self._write_campaign_recommendations(sheet, campaign, current_row)
         if budget is not None:
-            self._write_action_plan(sheet, report, budget, current_row + 1)
+            current_row = self._write_action_plan(sheet, report, budget, current_row + 1)
+        self._write_cross_sell_protection(sheet, report, current_row + 1)
 
         sheet.column_dimensions["A"].width = 3.0
         for column_letter in ("B", "C", "D", "E", "F", "G", "H"):
@@ -625,8 +628,8 @@ class ExcelWorkbookExporter:
         report: MultiCampaignReport,
         budget: BudgetOptimizationReport,
         anchor_row: int,
-    ) -> None:
-        """Write the budget redistribution action plan."""
+    ) -> int:
+        """Write the budget redistribution action plan; return the next row."""
         title_cell = sheet.cell(row=anchor_row, column=2, value="Action Plan")
         title_cell.font = Font(name=self._font_name, bold=True, size=12)
         currency = self._detect_currency(report)
@@ -639,7 +642,7 @@ class ExcelWorkbookExporter:
                 "• No budget redistribution recommended — the current allocation is balanced."
             )
             note_cell.font = self._body_font
-            return
+            return current_row + 1
 
         for transfer in budget.transfers:
             decrease_cell = sheet.cell(row=current_row, column=2)
@@ -659,6 +662,34 @@ class ExcelWorkbookExporter:
         gain_cell = sheet.cell(row=current_row + 1, column=2)
         gain_cell.value = f"Expected monthly gain: +{budget.total_expected_gain:,.2f} revenue"
         gain_cell.font = Font(name=self._font_name, bold=True, color="006100")
+        return current_row + 2
+
+    def _write_cross_sell_protection(
+        self,
+        sheet: Worksheet,
+        report: MultiCampaignReport,
+        anchor_row: int,
+    ) -> None:
+        """Write the summary of products protected by cross-sell revenue."""
+        protected = [
+            decision
+            for decision in report.decisions
+            if decision.reason == CROSS_SELL_PROTECTION_REASON
+        ]
+        protected_revenue = sum(decision.assist_revenue for decision in protected)
+        currency = self._detect_currency(report)
+        currency_suffix = f" {currency}" if currency else ""
+
+        title_cell = sheet.cell(row=anchor_row, column=2, value="Cross-sell Protection")
+        title_cell.font = Font(name=self._font_name, bold=True, size=12)
+        count_cell = sheet.cell(row=anchor_row + 1, column=2)
+        count_cell.value = f"Products protected by Cross-sell Revenue: {len(protected)}"
+        count_cell.font = self._body_font
+        total_cell = sheet.cell(row=anchor_row + 2, column=2)
+        total_cell.value = (
+            f"Total Cross-sell Revenue protected: {protected_revenue:,.2f}{currency_suffix}"
+        )
+        total_cell.font = self._body_font
 
     @staticmethod
     def _detect_currency(report: MultiCampaignReport) -> str:
@@ -725,11 +756,15 @@ class ExcelWorkbookExporter:
         if winners:
             sheet.sheet_properties.tabColor = "006100"
             selected = sorted(
-                (pair for pair in paired if pair[0].effective_revenue > 0),
+                (
+                    pair
+                    for pair in paired
+                    if pair[0].conversion_value > 0 and pair[0].conversions >= 1
+                ),
                 key=lambda pair: pair[0].roas,
                 reverse=True,
             )
-            empty_message = "No products with conversion value yet."
+            empty_message = "No products with conversions and conversion value yet."
         else:
             sheet.sheet_properties.tabColor = "9C0006"
             selected = sorted(
@@ -743,6 +778,67 @@ class ExcelWorkbookExporter:
             rows=selected[: self._excel.top_list_size],
             empty_message=empty_message,
         )
+
+    def _write_top_assist_sheet(
+        self,
+        sheet: Worksheet,
+        report: MultiCampaignReport,
+    ) -> None:
+        """Write the products with the highest cross-sell revenue."""
+        sheet.sheet_properties.tabColor = "2E75B6"
+        paired = self._decision_rows(report)
+        selected = sorted(
+            (pair for pair in paired if pair[0].assist_revenue > 0),
+            key=lambda pair: pair[0].assist_revenue,
+            reverse=True,
+        )[: self._excel.top_list_size]
+
+        headers = (
+            "SKU",
+            "Product",
+            "Cost",
+            "Clicks",
+            "Conversions",
+            "Conversion Value",
+            "Cross-sell Revenue",
+            "ROAS",
+        )
+        self._write_header_row(sheet, headers, row=1, start_column=1)
+        if not selected:
+            sheet.cell(row=2, column=1, value="No products with cross-sell revenue.")
+            sheet.cell(row=2, column=1).font = self._note_font
+        for row_offset, (decision, _campaign, product_title) in enumerate(selected):
+            row_number = 2 + row_offset
+            values = (
+                decision.sku,
+                product_title,
+                decision.cost,
+                decision.clicks,
+                decision.conversions,
+                decision.conversion_value,
+                decision.assist_revenue,
+                decision.roas / 100,
+            )
+            formats = (
+                "General",
+                "General",
+                _FORMAT_MONEY,
+                _FORMAT_INTEGER,
+                _FORMAT_CONVERSIONS,
+                _FORMAT_MONEY,
+                _FORMAT_MONEY,
+                _FORMAT_PERCENT,
+            )
+            for column_offset, (value, number_format) in enumerate(
+                zip(values, formats, strict=True)
+            ):
+                cell = sheet.cell(row=row_number, column=1 + column_offset)
+                cell.value = value
+                cell.number_format = number_format
+                cell.font = self._body_font
+                cell.border = _THIN_BORDER
+        sheet.freeze_panes = "A2"
+        self._auto_fit_columns(sheet, formula_width=14.0)
 
     def _write_decision_table(
         self,
@@ -785,7 +881,7 @@ class ExcelWorkbookExporter:
                 decision.clicks,
                 decision.cost,
                 decision.conversions,
-                decision.effective_revenue,
+                decision.conversion_value,
                 f"=IFERROR(G{row_number}/E{row_number},0)",
                 decision.reason,
             )

@@ -47,6 +47,13 @@ class KeepThresholds(_StrictModel):
     min_conversions: float = 2.0
 
 
+class CrossSellThresholds(_StrictModel):
+    """Settings of the cross-sell protection of PAUSE candidates."""
+
+    enabled: bool = True
+    min_cross_sell_roas: float = 2.0
+
+
 class DecisionThresholds(_StrictModel):
     """Every configurable threshold used by product decision rules."""
 
@@ -54,6 +61,7 @@ class DecisionThresholds(_StrictModel):
     scale: ScaleThresholds = ScaleThresholds()
     watch: WatchThresholds = WatchThresholds()
     keep: KeepThresholds = KeepThresholds()
+    cross_sell: CrossSellThresholds = CrossSellThresholds()
 
 
 class AuditThresholds(_StrictModel):
@@ -107,6 +115,7 @@ class ThresholdConfiguration(_StrictModel):
     scale: ScaleThresholds = ScaleThresholds()
     watch: WatchThresholds = WatchThresholds()
     keep: KeepThresholds = KeepThresholds()
+    cross_sell: CrossSellThresholds = CrossSellThresholds()
     budget: BudgetThresholds = BudgetThresholds()
     audit: AuditThresholds = AuditThresholds()
     excel: ExcelSettings = ExcelSettings()
@@ -120,6 +129,7 @@ class ThresholdConfiguration(_StrictModel):
             scale=self.scale,
             watch=self.watch,
             keep=self.keep,
+            cross_sell=self.cross_sell,
         )
 
     def thresholds_for_campaign(self, campaign_name: str) -> DecisionThresholds:
@@ -157,6 +167,7 @@ class ThresholdConfiguration(_StrictModel):
                 ),
             ),
             keep=self.keep,
+            cross_sell=self.cross_sell,
         )
 
     def _matching_override(self, campaign_name: str) -> CampaignThresholds | None:

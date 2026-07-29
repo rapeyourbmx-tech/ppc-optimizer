@@ -1,5 +1,10 @@
 """Human-readable explanations for product decisions."""
 
+CROSS_SELL_PROTECTION_REASON = (
+    "Product generates sufficient cross-sell revenue to justify keeping "
+    "it active despite not meeting direct performance requirements."
+)
+
 
 class DecisionExplainer:
     """Format metric-based explanations for product decisions."""
@@ -11,7 +16,7 @@ class DecisionExplainer:
         *,
         roas: float,
         cost: float,
-        effective_revenue: float,
+        conversion_value: float,
         conversions: float,
     ) -> str:
         """Explain a performance-based decision (KEEP, SCALE, low-ROAS WATCH)."""
@@ -19,7 +24,7 @@ class DecisionExplainer:
             (
                 f"ROAS = {_format_metric(roas)}",
                 f"Cost = {_format_metric(cost)}",
-                f"Revenue = {_format_metric(effective_revenue)}",
+                f"Revenue = {_format_metric(conversion_value)}",
                 f"Conversions = {_format_metric(conversions)}",
             )
         )
@@ -37,6 +42,23 @@ class DecisionExplainer:
                 f"Cost = {_format_metric(cost)}",
                 f"Clicks = {_format_metric(clicks)}",
                 f"Conversions = {_format_metric(conversions)}",
+            )
+        )
+
+    def cross_sell_protection(
+        self,
+        *,
+        assist_revenue: float,
+        cross_sell_roas: float,
+        min_cross_sell_roas: float,
+    ) -> str:
+        """Explain a WATCH decision protected by cross-sell revenue."""
+        return "\n".join(
+            (
+                f"Cross-sell revenue = {_format_metric(assist_revenue)}",
+                f"Cross-sell ROAS = {cross_sell_roas:.2f}",
+                f"Threshold = {min_cross_sell_roas:.2f}",
+                CROSS_SELL_PROTECTION_REASON,
             )
         )
 

@@ -68,3 +68,10 @@ dashboard:
   header_color: "1F3864"
   card_fill_color: "F5F7FA"
   roas_color_scale_max: 10   # ROAS (x) mapped to the greenest color
+
+# Cross-sell protection: a PAUSE candidate stays active as WATCH when its
+# cross-sell ROAS (assist_revenue / cost, a plain ratio) reaches the minimum.
+# This ratio is separate from the main ROAS (conversion_value / cost).
+cross_sell:
+  enabled: true
+  min_cross_sell_roas: 2.0

@@ -15,3 +15,4 @@ class WorkbookSheet(StrEnum):
     SCALE = "SCALE"
     TOP_WINNERS = "Top Winners"
     TOP_LOSERS = "Top Losers"
+    TOP_ASSIST = "Top Assist Products"

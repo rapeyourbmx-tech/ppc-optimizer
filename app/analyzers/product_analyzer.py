@@ -1,6 +1,9 @@
 """Product-level advertising performance analysis."""
 
-from app.analyzers.decision_explainer import DecisionExplainer
+from app.analyzers.decision_explainer import (
+    CROSS_SELL_PROTECTION_REASON,
+    DecisionExplainer,
+)
 from app.config import DecisionThresholds
 from app.models.product_decision import ProductDecision, ProductStatus
 
@@ -24,15 +27,21 @@ class ProductAnalyzer:
         clicks: int,
         cost: float,
         conversions: float,
-        effective_revenue: float,
+        conversion_value: float,
+        assist_revenue: float = 0.0,
     ) -> ProductDecision:
-        """Create a decision using the configured product performance rules."""
-        roas = self._calculate_roas(cost=cost, effective_revenue=effective_revenue)
+        """Create a decision using the configured product performance rules.
+
+        Cross-sell (assist) revenue never enters ROAS or revenue math; it
+        only protects a product from an automatic PAUSE recommendation.
+        """
+        roas = self._calculate_roas(cost=cost, conversion_value=conversion_value)
         status, reason, explanation = self._decide(
             clicks=clicks,
             cost=cost,
             conversions=conversions,
-            effective_revenue=effective_revenue,
+            conversion_value=conversion_value,
+            assist_revenue=assist_revenue,
             roas=roas,
         )
 
@@ -41,20 +50,52 @@ class ProductAnalyzer:
             clicks=clicks,
             cost=cost,
             conversions=conversions,
-            effective_revenue=effective_revenue,
+            conversion_value=conversion_value,
+            assist_revenue=assist_revenue,
             roas=roas,
             status=status,
             reason=reason,
             explanation=explanation,
         )
 
+    def _cross_sell_protection(
+        self,
+        *,
+        cost: float,
+        assist_revenue: float,
+    ) -> tuple[ProductStatus, str, str] | None:
+        """Protect a PAUSE candidate when its cross-sell ROAS clears the bar.
+
+        The cross-sell ROAS (assist_revenue / cost) is used only here and
+        never touches the main ROAS. Returns None when the protection is
+        disabled, there is no assist revenue, or the ratio is below the
+        configured minimum — the PAUSE recommendation then stands.
+        """
+        cross_sell = self._thresholds.cross_sell
+        if not cross_sell.enabled or assist_revenue <= 0 or cost <= 0:
+            return None
+
+        cross_sell_roas = assist_revenue / cost
+        if cross_sell_roas < cross_sell.min_cross_sell_roas:
+            return None
+
+        return (
+            ProductStatus.WATCH,
+            CROSS_SELL_PROTECTION_REASON,
+            self._explainer.cross_sell_protection(
+                assist_revenue=assist_revenue,
+                cross_sell_roas=cross_sell_roas,
+                min_cross_sell_roas=cross_sell.min_cross_sell_roas,
+            ),
+        )
+
     @staticmethod
-    def _calculate_roas(*, cost: float, effective_revenue: float) -> float:
-        """Calculate ROAS as effective_revenue / cost in percent."""
+    def _calculate_roas(*, cost: float, conversion_value: float) -> float:
+        """Calculate ROAS as conversion_value / cost in percent."""
         if cost == 0:
             return 0.0
 
-        return (effective_revenue / cost) * 100
+        return (conversion_value / cost) * 100
 
     def _decide(
         self,
@@ -62,7 +103,8 @@ class ProductAnalyzer:
         clicks: int,
         cost: float,
         conversions: float,
-        effective_revenue: float,
+        conversion_value: float,
+        assist_revenue: float,
         roas: float,
     ) -> tuple[ProductStatus, str, str]:
         """Select the status, reason, and explanation for one product's metrics."""
@@ -79,6 +121,12 @@ class ProductAnalyzer:
             )
 
         if cost >= pause.min_cost and conversions <= pause.max_conversions:
+            protection = self._cross_sell_protection(
+                cost=cost,
+                assist_revenue=assist_revenue,
+            )
+            if protection is not None:
+                return protection
             return (
                 ProductStatus.PAUSE,
                 (
@@ -95,11 +143,11 @@ class ProductAnalyzer:
         performance_explanation = self._explainer.performance_summary(
             roas=roas,
             cost=cost,
-            effective_revenue=effective_revenue,
+            conversion_value=conversion_value,
             conversions=conversions,
         )
 
-        if roas >= scale.min_roas and effective_revenue >= scale.min_conversion_value:
+        if roas >= scale.min_roas and conversion_value >= scale.min_conversion_value:
             return (
                 ProductStatus.SCALE,
                 (

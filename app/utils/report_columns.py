@@ -8,7 +8,6 @@ CLICK_COLUMNS: tuple[str, ...] = ("clicks",)
 COST_COLUMNS: tuple[str, ...] = ("cost",)
 CONVERSION_COLUMNS: tuple[str, ...] = ("conversions",)
 CONVERSION_VALUE_COLUMNS: tuple[str, ...] = ("conversion_value", "conversion_value_value")
-EFFECTIVE_REVENUE_COMPONENT_COLUMNS: tuple[str, ...] = ("direct_revenue", "assist_revenue")
 
 
 class ReportColumnError(ValueError):
@@ -34,17 +33,15 @@ def numeric_values(values: pd.Series) -> pd.Series:
     return pd.to_numeric(values, errors="coerce").fillna(0.0)
 
 
-def effective_revenue_values(products: pd.DataFrame) -> pd.Series:
-    """Return the effective revenue for every product row.
+def conversion_revenue_values(products: pd.DataFrame) -> pd.Series:
+    """Return the conversion value used for ROAS and performance rules.
 
-    When the statistics revenue split is present (see ProductStatistics),
-    the effective revenue is direct_revenue + assist_revenue. Otherwise it
-    falls back to the export conversion value column, which carries the
-    full value in base Google Ads product reports.
+    Base reports provide the conversion value column directly. Statistics
+    reports carry the split instead, where direct_revenue is the
+    conversion revenue; cross-sell revenue never enters this series.
     """
-    if all(column_name in products.columns for column_name in EFFECTIVE_REVENUE_COMPONENT_COLUMNS):
-        direct_column, assist_column = EFFECTIVE_REVENUE_COMPONENT_COLUMNS
-        return numeric_values(products[direct_column]) + numeric_values(products[assist_column])
+    if "conversion_value" not in products.columns and "direct_revenue" in products.columns:
+        return numeric_values(products["direct_revenue"])
 
     revenue_column = resolve_column(
         products,
@@ -52,3 +49,11 @@ def effective_revenue_values(products: pd.DataFrame) -> pd.Series:
         "conversion value",
     )
     return numeric_values(products[revenue_column])
+
+
+def assist_revenue_values(products: pd.DataFrame) -> pd.Series:
+    """Return the cross-sell (assist) revenue, or zeros when absent."""
+    if "assist_revenue" in products.columns:
+        return numeric_values(products["assist_revenue"])
+
+    return pd.Series(0.0, index=products.index)

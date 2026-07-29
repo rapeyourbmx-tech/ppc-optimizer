@@ -10,10 +10,6 @@ import pandas as pd
 from app.loaders.google_ads_product_report_mapper import GoogleAdsProductReportMapper
 from app.loaders.metric_normalizer import normalize_metric_values
 from app.loaders.report_type_detection import AutoDetectingReportMapper
-from app.utils.report_columns import (
-    EFFECTIVE_REVENUE_COMPONENT_COLUMNS,
-    effective_revenue_values,
-)
 
 
 class UnsupportedReportFormatError(ValueError):
@@ -72,8 +68,7 @@ class GoogleAdsProductReportLoader:
             message = "Only CSV and XLSX Google Ads product reports are supported."
             raise UnsupportedReportFormatError(message)
 
-        normalized_report = normalize_metric_values(self._mapper.map(report))
-        return self._materialize_effective_revenue(normalized_report)
+        return normalize_metric_values(self._mapper.map(report))
 
     def _load_csv(self, source_path: Path) -> pd.DataFrame:
         """Read a Google Ads CSV export with header detection and delimiter sniffing.
@@ -176,22 +171,3 @@ class GoogleAdsProductReportLoader:
                 return encoding
 
         return cls._CSV_ENCODING
-
-    @staticmethod
-    def _materialize_effective_revenue(report: pd.DataFrame) -> pd.DataFrame:
-        """Add the effective revenue column for statistics reports.
-
-        Reports with the revenue split get a materialized numeric
-        effective_revenue column (direct + assist), so reporting formulas
-        and decisions share one revenue source. Base reports are returned
-        unchanged.
-        """
-        has_split = all(
-            column_name in report.columns for column_name in EFFECTIVE_REVENUE_COMPONENT_COLUMNS
-        )
-        if not has_split:
-            return report
-
-        report = report.copy()
-        report["effective_revenue"] = effective_revenue_values(report)
-        return report

@@ -17,7 +17,8 @@ from app.utils.report_columns import (
     CONVERSION_COLUMNS,
     COST_COLUMNS,
     SKU_COLUMNS,
-    effective_revenue_values,
+    assist_revenue_values,
+    conversion_revenue_values,
     numeric_values,
     resolve_column,
 )
@@ -74,7 +75,8 @@ class ApplicationPipeline:
         clicks = numeric_values(products[click_column])
         cost = numeric_values(products[cost_column])
         conversions = numeric_values(products[conversion_column])
-        effective_revenue = effective_revenue_values(products)
+        conversion_value = conversion_revenue_values(products)
+        assist_revenue = assist_revenue_values(products)
 
         return [
             self._product_analyzer.analyze(
@@ -82,20 +84,23 @@ class ApplicationPipeline:
                 clicks=int(product_clicks),
                 cost=float(product_cost),
                 conversions=float(product_conversions),
-                effective_revenue=float(product_effective_revenue),
+                conversion_value=float(product_conversion_value),
+                assist_revenue=float(product_assist_revenue),
             )
             for (
                 product_sku,
                 product_clicks,
                 product_cost,
                 product_conversions,
-                product_effective_revenue,
+                product_conversion_value,
+                product_assist_revenue,
             ) in zip(
                 sku,
                 clicks,
                 cost,
                 conversions,
-                effective_revenue,
+                conversion_value,
+                assist_revenue,
                 strict=True,
             )
         ]

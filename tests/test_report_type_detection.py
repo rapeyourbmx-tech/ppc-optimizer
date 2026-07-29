@@ -90,14 +90,15 @@ def test_statistics_file_flows_through_the_analyzer_without_flags(
     report = MultiCampaignAnalyzer().analyze([source_path])
 
     decision = report.decisions[0]
-    assert decision.effective_revenue == 1000.0
+    assert decision.conversion_value == 800.0
+    assert decision.assist_revenue == 200.0
     assert report.overall_summary.total_products == 1
 
 
-def test_split_columns_override_conversion_value_in_decisions(
+def test_conversion_value_stays_the_basis_when_both_sets_present(
     tmp_path: Path,
 ) -> None:
-    """With both sets present the decision revenue is direct plus assist."""
+    """With both sets present ROAS uses conversion value; assist stays separate."""
     frame = _statistics_frame()
     frame["Conversion Value"] = 100.0
     source_path = tmp_path / "mixed.csv"
@@ -105,7 +106,9 @@ def test_split_columns_override_conversion_value_in_decisions(
 
     report = MultiCampaignAnalyzer().analyze([source_path])
 
-    assert report.decisions[0].effective_revenue == 1000.0
+    decision = report.decisions[0]
+    assert decision.conversion_value == 100.0
+    assert decision.assist_revenue == 200.0
 
 
 def test_statistics_file_with_locale_numbers_via_cli(
@@ -166,6 +169,7 @@ def test_statistics_file_generates_a_workbook(
 
     workbook = load_workbook(output_path)
     header_values = [cell.value for cell in workbook["Products"][1]]
-    assert "Effective Revenue" in header_values
+    assert "Direct Revenue" in header_values
+    assert "Assist Revenue" in header_values
     watch_values = [cell.value for cell in workbook["WATCH"][2]]
-    assert 1000.0 in watch_values
+    assert 800.0 in watch_values

@@ -14,7 +14,7 @@ def _summary() -> CampaignSummary:
         clicks=20,
         cost=100.0,
         conversions=1.0,
-        effective_revenue=1300.0,
+        conversion_value=1300.0,
         roas=1300.0,
         status=ProductStatus.SCALE,
         reason="ROAS is above 1200%.",

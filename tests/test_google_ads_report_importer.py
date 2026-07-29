@@ -61,18 +61,19 @@ def test_import_reads_xlsx_exports(tmp_path: Path) -> None:
     records = GoogleAdsReportImporter().import_report(source_path)
 
     assert [record.offer_id for record in records] == ["SKU-100", "SKU-200"]
-    assert records[0].effective_revenue == 12500.25
+    assert records[0].direct_revenue == 10000.0
+    assert records[0].assist_revenue == 2500.25
 
 
-def test_effective_revenue_is_direct_plus_assist(tmp_path: Path) -> None:
-    """effectiveRevenue equals directRevenue plus assistRevenue."""
+def test_revenue_fields_stay_separate(tmp_path: Path) -> None:
+    """Direct and assist revenue are imported as independent metrics."""
     source_path = tmp_path / "statistics.csv"
     pd.DataFrame(_statistics_rows()).to_csv(source_path, index=False)
 
     records = GoogleAdsReportImporter().import_report(source_path)
 
-    for record in records:
-        assert record.effective_revenue == (record.direct_revenue + record.assist_revenue)
+    assert records[0].direct_revenue == 10000.0
+    assert records[0].assist_revenue == 2500.25
 
 
 def test_import_normalizes_locale_formatted_numbers(tmp_path: Path) -> None:
@@ -97,7 +98,7 @@ def test_import_normalizes_locale_formatted_numbers(tmp_path: Path) -> None:
     record = records[0]
     assert record.cost == 1250.5
     assert record.impressions == 3400
-    assert record.effective_revenue == 12500.25
+    assert record.assist_revenue == 2500.25
 
 
 def test_import_rejects_export_without_cross_sell_revenue(tmp_path: Path) -> None:
