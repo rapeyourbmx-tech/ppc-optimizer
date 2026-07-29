@@ -170,6 +170,26 @@ index 23814de..a93373a 100644
          )
  
      def _matching_override(self, campaign_name: str) -> CampaignThresholds | None:
+diff --git a/app/loaders/google_ads_product_report_mapper.py b/app/loaders/google_ads_product_report_mapper.py
+index 147fda6..0de4a64 100644
+--- a/app/loaders/google_ads_product_report_mapper.py
++++ b/app/loaders/google_ads_product_report_mapper.py
+@@ -68,8 +68,14 @@ class GoogleAdsProductReportMapper:
+             "назва_товару",
+             "назва",
+         ),
+-        "clicks": ("clicks", "кліки"),
++        "clicks": ("clicks", "кліки", "кліки_товарів", "product_clicks"),
+         "impressions": ("impressions", "покази"),
++        "assist_revenue": (
++            "cross_sell_revenue",
++            "assist_revenue",
++            "дохід_від_перехресних_продажів",
++            "перехресний_дохід",
++        ),
+         "ctr": ("ctr",),
+         "average_cpc": (
+             "average_cpc",
 diff --git a/app/reporting/excel_workbook_exporter.py b/app/reporting/excel_workbook_exporter.py
 index d9b1eea..bfefa78 100644
 --- a/app/reporting/excel_workbook_exporter.py
@@ -199,7 +219,7 @@ index 97b02f9..b46c1ea 100644
 +  enabled: true
 +  min_cross_sell_roas: 2.0
 diff --git a/tests/test_cross_sell_protection.py b/tests/test_cross_sell_protection.py
-index a38922a..67ce477 100644
+index a38922a..0a3bee4 100644
 --- a/tests/test_cross_sell_protection.py
 +++ b/tests/test_cross_sell_protection.py
 @@ -6,10 +6,9 @@ import pandas as pd
@@ -286,3 +306,75 @@ index a38922a..67ce477 100644
  
  
  def test_workbook_reports_protection_and_top_assist_sheet(
+@@ -144,3 +177,33 @@ def test_workbook_reports_protection_and_top_assist_sheet(
+     ]
+     assert "WINNER" in winner_skus
+     assert "NO-SALES" not in winner_skus
++
++
++def test_protection_works_for_base_reports_with_cross_sell_column(
++    tmp_path: Path,
++    monkeypatch: pytest.MonkeyPatch,
++    capsys: pytest.CaptureFixture[str],
++) -> None:
++    """A base export with cross-sell revenue protects pause candidates."""
++    monkeypatch.chdir(tmp_path)
++    source_path = tmp_path / "base.csv"
++    pd.DataFrame(
++        [
++            {
++                "Item ID": "BASE-PROTECTED",
++                "Impressions": 5000,
++                "Clicks": 40,
++                "Cost": 500.0,
++                "Conversions": 0.0,
++                "Conversion Value": 0.0,
++                "Cross-sell Revenue": 2464.48,
++            }
++        ]
++    ).to_csv(source_path, index=False)
++
++    exit_code = run(source_path, dry_run=True)
++
++    captured = capsys.readouterr()
++    assert exit_code == 0
++    assert "Watch: 1" in captured.out
++    assert "Pause: 0" in captured.out
+diff --git a/tests/test_product_report_loader.py b/tests/test_product_report_loader.py
+index 2bc3373..84448ca 100644
+--- a/tests/test_product_report_loader.py
++++ b/tests/test_product_report_loader.py
+@@ -236,3 +236,33 @@ def test_load_still_reads_utf8_with_bom(tmp_path: Path) -> None:
+     report = GoogleAdsProductReportLoader().load(source_path)
+ 
+     assert report.loc[0, "product_id"] == "SKU-UTF8"
++
++
++def test_load_maps_product_clicks_header_variant(tmp_path: Path) -> None:
++    """The 'Кліки товарів' header maps to the clicks column."""
++    content = (
++        "Зображення\tІдентифікатор елемента\tКліки товарів\tПокази\tВартість\t"
++        "Конверсії\tЦінність конв.\n"
++        "\tSKU-PC\t12\t500\tгрн100,00\t1\tгрн400,00\n"
++    )
++    source_path = tmp_path / "product_clicks.csv"
++    source_path.write_bytes(content.encode("utf-16"))
++
++    report = GoogleAdsProductReportLoader().load(source_path)
++
++    assert report.loc[0, "clicks"] == 12
++
++
++def test_load_maps_cross_sell_column_in_base_reports(tmp_path: Path) -> None:
++    """Base exports with the cross-sell column feed the assist revenue."""
++    content = (
++        "Item ID,Clicks,Impressions,Cost,Conversions,Conversion Value,"
++        "Cross-sell Revenue\n"
++        "SKU-CS,10,500,100.0,1,400.0,250.0\n"
++    )
++    source_path = tmp_path / "base_with_cross_sell.csv"
++    source_path.write_text(content, encoding="utf-8")
++
++    report = GoogleAdsProductReportLoader().load(source_path)
++
++    assert report.loc[0, "assist_revenue"] == 250.0

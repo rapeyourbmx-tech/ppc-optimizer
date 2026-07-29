@@ -68,8 +68,14 @@ class GoogleAdsProductReportMapper:
             "назва_товару",
             "назва",
         ),
-        "clicks": ("clicks", "кліки"),
+        "clicks": ("clicks", "кліки", "кліки_товарів", "product_clicks"),
         "impressions": ("impressions", "покази"),
+        "assist_revenue": (
+            "cross_sell_revenue",
+            "assist_revenue",
+            "дохід_від_перехресних_продажів",
+            "перехресний_дохід",
+        ),
         "ctr": ("ctr",),
         "average_cpc": (
             "average_cpc",

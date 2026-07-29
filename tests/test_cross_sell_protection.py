@@ -177,3 +177,33 @@ def test_workbook_reports_protection_and_top_assist_sheet(
     ]
     assert "WINNER" in winner_skus
     assert "NO-SALES" not in winner_skus
+
+
+def test_protection_works_for_base_reports_with_cross_sell_column(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """A base export with cross-sell revenue protects pause candidates."""
+    monkeypatch.chdir(tmp_path)
+    source_path = tmp_path / "base.csv"
+    pd.DataFrame(
+        [
+            {
+                "Item ID": "BASE-PROTECTED",
+                "Impressions": 5000,
+                "Clicks": 40,
+                "Cost": 500.0,
+                "Conversions": 0.0,
+                "Conversion Value": 0.0,
+                "Cross-sell Revenue": 2464.48,
+            }
+        ]
+    ).to_csv(source_path, index=False)
+
+    exit_code = run(source_path, dry_run=True)
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert "Watch: 1" in captured.out
+    assert "Pause: 0" in captured.out

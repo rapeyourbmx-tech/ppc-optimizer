@@ -236,3 +236,33 @@ def test_load_still_reads_utf8_with_bom(tmp_path: Path) -> None:
     report = GoogleAdsProductReportLoader().load(source_path)
 
     assert report.loc[0, "product_id"] == "SKU-UTF8"
+
+
+def test_load_maps_product_clicks_header_variant(tmp_path: Path) -> None:
+    """The 'Кліки товарів' header maps to the clicks column."""
+    content = (
+        "Зображення\tІдентифікатор елемента\tКліки товарів\tПокази\tВартість\t"
+        "Конверсії\tЦінність конв.\n"
+        "\tSKU-PC\t12\t500\tгрн100,00\t1\tгрн400,00\n"
+    )
+    source_path = tmp_path / "product_clicks.csv"
+    source_path.write_bytes(content.encode("utf-16"))
+
+    report = GoogleAdsProductReportLoader().load(source_path)
+
+    assert report.loc[0, "clicks"] == 12
+
+
+def test_load_maps_cross_sell_column_in_base_reports(tmp_path: Path) -> None:
+    """Base exports with the cross-sell column feed the assist revenue."""
+    content = (
+        "Item ID,Clicks,Impressions,Cost,Conversions,Conversion Value,"
+        "Cross-sell Revenue\n"
+        "SKU-CS,10,500,100.0,1,400.0,250.0\n"
+    )
+    source_path = tmp_path / "base_with_cross_sell.csv"
+    source_path.write_text(content, encoding="utf-8")
+
+    report = GoogleAdsProductReportLoader().load(source_path)
+
+    assert report.loc[0, "assist_revenue"] == 250.0
